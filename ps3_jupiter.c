@@ -24,6 +24,7 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
+#include <linux/rculist.h>
 
 #include <linux/etherdevice.h>
 #include <linux/if_ether.h>
@@ -58,6 +59,7 @@ struct ps3_jupiter_dev {
 	struct workqueue_struct *event_queue;
 	struct delayed_work event_work;
 	struct list_head event_listeners;
+	spinlock_t event_listeners_lock;
 	struct list_head event_list;
 	spinlock_t event_list_lock;
 
@@ -123,10 +125,14 @@ static void ps3_jupiter_event_worker(struct work_struct *work)
 
 		spin_unlock_irqrestore(&jd->event_list_lock, flags);
 
-		list_for_each_entry(listener, &jd->event_listeners, list) {
+		rcu_read_lock();
+
+		list_for_each_entry_rcu(listener, &jd->event_listeners, list) {
 			if (listener->function)
 				listener->function(listener, &list_event->event);
 		}
+
+		rcu_read_unlock();
 
 		kfree(list_event);
 	}
@@ -323,15 +329,26 @@ static int _ps3_jupiter_register_event_listener(struct ps3_jupiter_dev *jd,
 	struct ps3_jupiter_event_listener *listener)
 {
 	struct ps3_jupiter_event_listener *entry;
+	unsigned long flags;
 
 	BUG_ON(!jd);
 
-	list_for_each_entry(entry, &jd->event_listeners, list) {
-		if (entry == listener)
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(entry, &jd->event_listeners, list) {
+		if (entry == listener) {
+			rcu_read_unlock();
 			return -EINVAL;
+		}
 	}
 
-	list_add_tail(&listener->list, &jd->event_listeners);
+	rcu_read_unlock();
+
+	spin_lock_irqsave(&jd->event_listeners_lock, flags);
+	list_add_tail_rcu(&listener->list, &jd->event_listeners);
+	spin_unlock_irqrestore(&jd->event_listeners_lock, flags);
+
+	synchronize_rcu();
 
 	return 0;
 }
@@ -360,16 +377,25 @@ EXPORT_SYMBOL_GPL(ps3_jupiter_register_event_listener);
 static int _ps3_jupiter_unregister_event_listener(struct ps3_jupiter_dev *jd,
 	struct ps3_jupiter_event_listener *listener)
 {
-	struct ps3_jupiter_event_listener *entry, *tmp;
+	struct ps3_jupiter_event_listener *entry;
+	unsigned long flags;
 
 	BUG_ON(!jd);
 
-	list_for_each_entry_safe(entry, tmp, &jd->event_listeners, list) {
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(entry, &jd->event_listeners, list) {
 		if (entry == listener) {
-			list_del(&listener->list);
+			rcu_read_unlock();
+			spin_lock_irqsave(&jd->event_listeners_lock, flags);
+			list_del_rcu(&listener->list);
+			spin_unlock_irqrestore(&jd->event_listeners_lock, flags);
+			synchronize_rcu();
 			return 0;
 		}
 	}
+
+	rcu_read_unlock();
 
 	return -EINVAL;
 }
@@ -486,7 +512,7 @@ done:
 }
 
 /*
- *_ps3_jupiter_exec_eurus_cmd
+ * _ps3_jupiter_exec_eurus_cmd
  */
 int ps3_jupiter_exec_eurus_cmd(enum ps3_eurus_cmd cmd,
 	void *payload, unsigned int payload_length,
@@ -749,6 +775,7 @@ static int ps3_jupiter_probe(struct usb_interface *interface,
 	usb_set_intfdata(interface, jd);
 
 	INIT_LIST_HEAD(&jd->event_listeners);
+	spin_lock_init(&jd->event_listeners_lock);
 	INIT_LIST_HEAD(&jd->event_list);
 	spin_lock_init(&jd->event_list_lock);
 
