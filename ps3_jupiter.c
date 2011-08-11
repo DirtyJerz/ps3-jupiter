@@ -54,6 +54,7 @@ struct ps3_jupiter_dev {
 
 	u16 cmd_tag, eurus_cmd, eurus_tag;
 	struct completion cmd_done_comp;
+	spinlock_t cmd_lock;
 	int cmd_busy, cmd_err;
 
 	struct workqueue_struct *event_queue;
@@ -431,6 +432,7 @@ static int _ps3_jupiter_exec_eurus_cmd(struct ps3_jupiter_dev *jd,
 	struct ps3_jupiter_pkt_hdr *pkt_hdr;
 	struct ps3_jupiter_cmd_hdr *cmd_hdr;
 	struct ps3_eurus_hdr *eurus_hdr;
+	unsigned long flags;
 	int err;
 
 	BUG_ON(!jd);
@@ -438,11 +440,18 @@ static int _ps3_jupiter_exec_eurus_cmd(struct ps3_jupiter_dev *jd,
 	if (!payload && payload_length)
 		return -EINVAL;
 
+	spin_lock_irqsave(&jd->cmd_lock, flags);
+
 	if (jd->cmd_busy) {
+		spin_unlock_irqrestore(&jd->cmd_lock, flags);
 		dev_dbg(&udev->dev,
 			"trying to execute multiple commands at the same time\n");
 		return -EAGAIN;
 	}
+
+	jd->cmd_busy = 1;
+
+	spin_unlock_irqrestore(&jd->cmd_lock, flags);
 
 	dev_dbg(&udev->dev, "EURUS command 0x%02x payload length %d\n",
 		cmd, payload_length);
@@ -773,6 +782,8 @@ static int ps3_jupiter_probe(struct usb_interface *interface,
 
 	jd->udev = usb_get_dev(udev);
 	usb_set_intfdata(interface, jd);
+
+	spin_lock_init(&jd->cmd_lock);
 
 	INIT_LIST_HEAD(&jd->event_listeners);
 	spin_lock_init(&jd->event_listeners_lock);
