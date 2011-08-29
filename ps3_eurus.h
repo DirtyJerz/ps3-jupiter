@@ -63,6 +63,7 @@ enum ps3_eurus_cmd_id {
 };
 
 enum ps3_eurus_event_type {
+	PS3_EURUS_EVENT_TYPE_0x40		= 0x00000040,
 	PS3_EURUS_EVENT_TYPE_0x80		= 0x00000080,
 	PS3_EURUS_EVENT_TYPE_0x400		= 0x00000400,
 };
@@ -217,7 +218,7 @@ struct ps3_eurus_scan_result {
 	__le16 length;
 	u8 bssid[6];
 	u8 rssi;
-	u8 res[9];
+	u8 unknown[9];
 	u8 ie[0];
 } __packed;
 
