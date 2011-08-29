@@ -183,7 +183,7 @@ struct ps3_eurus_cmd_common_config {
 struct ps3_eurus_cmd_wep_config {
 	u8 unknown1;
 	u8 security;		/* enum ps3_eurus_wep_security */
-	__le16 unknown3;
+	__le16 unknown2;
 	u8 key[4][16];
 } __packed;
 
@@ -231,8 +231,8 @@ struct ps3_eurus_cmd_get_rssi {
 struct ps3_eurus_cmd_0x105f {
 	__le16 channel_info;
 	u8 mac_addr[6];
+	u8 unknown1;
 	u8 unknown2;
-	u8 unknown3;
 } __packed;
 
 struct ps3_eurus_cmd_0x1109 {
