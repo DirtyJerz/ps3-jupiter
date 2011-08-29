@@ -855,7 +855,8 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 
 	eurus_cmd_0x1031 = (struct ps3_eurus_cmd_0x1031 *) buf;
 	memset(eurus_cmd_0x1031, 0, sizeof(*eurus_cmd_0x1031));
-	eurus_cmd_0x1031->unknown = 0x0;
+	eurus_cmd_0x1031->unknown1 = 0x0;
+	eurus_cmd_0x1031->unknown2 = 0x0;
 
 	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_0x1031, eurus_cmd_0x1031, sizeof(*eurus_cmd_0x1031),
 	    &status, NULL, NULL);
@@ -992,8 +993,8 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	memset(eurus_cmd_0x105f, 0, sizeof(*eurus_cmd_0x105f));
 	eurus_cmd_0x105f->channel_info = cpu_to_le16(jd->channel_info);
 	memcpy(eurus_cmd_0x105f->mac_addr, jd->mac_addr, sizeof(jd->mac_addr));
+	eurus_cmd_0x105f->unknown1 = 0x2;
 	eurus_cmd_0x105f->unknown2 = 0x2;
-	eurus_cmd_0x105f->unknown3 = 0x2;
 
 	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_0x105f, eurus_cmd_0x105f, sizeof(*eurus_cmd_0x105f),
 	    &status, NULL, NULL);
