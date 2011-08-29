@@ -119,6 +119,11 @@ struct ps3_eurus_cmd_hdr {
 	u8 res[4];
 } __packed;
 
+struct ps3_eurus_cmd_0xf {
+	u8 unknown[35];
+	__le16 channel;
+} __packed;
+
 struct ps3_eurus_cmd_0x11 {
 	u8 unknown;
 } __packed;
