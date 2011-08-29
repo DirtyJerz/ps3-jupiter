@@ -701,7 +701,7 @@ static void ps3_jupiter_event_handler(struct ps3_jupiter_event_listener *listene
 	dev_dbg(&udev->dev, "got event (0x%08x 0x%08x 0x%08x 0x%08x 0x%08x)\n",
 	    event->hdr.type, event->hdr.id, event->hdr.unknown1, event->hdr.payload_length, event->hdr.unknown2);
 
-	if (event->hdr.type == 0x400) {
+	if (event->hdr.type == PS3_EURUS_EVENT_TYPE_0x400) {
 		if ((event->hdr.id == 0x8) || (event->hdr.id == 0x10))
 			complete(&jd->event_comp);
 	}
@@ -726,8 +726,9 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	struct ps3_eurus_cmd_0x207 *eurus_cmd_0x207;
 	struct ps3_eurus_cmd_0x203 *eurus_cmd_0x203;
 	struct ps3_eurus_cmd_0x105f *eurus_cmd_0x105f;
+	struct ps3_eurus_cmd_get_fw_version *eurus_cmd_get_fw_version;
 	unsigned char *buf;
-	unsigned int status;
+	unsigned int status, response_length;
 	int err;
 
 	buf = kmalloc(PS3_JUPITER_CMD_BUFSIZE, GFP_KERNEL);
@@ -1005,6 +1006,27 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 		err = -ENODEV;
 		goto done;
 	}
+
+	/* device is ready now */
+
+	/* read firmware version */
+
+	eurus_cmd_get_fw_version = (struct ps3_eurus_cmd_get_fw_version *) buf;
+	memset(eurus_cmd_get_fw_version, 0, sizeof(*eurus_cmd_get_fw_version));
+
+	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_GET_FW_VERSION, eurus_cmd_get_fw_version, sizeof(*eurus_cmd_get_fw_version),
+	    &status, &response_length, eurus_cmd_get_fw_version);
+	if (err)
+		goto done;
+
+	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_GET_FW_VERSION, status);
+
+	if (status != 1) {
+		err = -ENODEV;
+		goto done;
+	}
+
+	dev_dbg(&udev->dev, "firmware version: %s\n", (char *) eurus_cmd_get_fw_version->version);
 
 	err = 0;
 
