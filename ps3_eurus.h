@@ -25,6 +25,7 @@
 #include <linux/types.h>
 
 enum ps3_eurus_cmd_id {
+	PS3_EURUS_CMD_SET_AP_SSID		= 0x0005,
 	PS3_EURUS_CMD_0xf			= 0x000f,
 	PS3_EURUS_CMD_0x11			= 0x0011,
 	PS3_EURUS_CMD_SET_ANTENNA		= 0x0029,
@@ -116,6 +117,11 @@ struct ps3_eurus_cmd_hdr {
 	__le16 tag;
 	__le16 status;
 	__le16 payload_length;
+	u8 res[4];
+} __packed;
+
+struct ps3_eurus_cmd_set_ap_ssid {
+	u8 ssid[32];
 	u8 res[4];
 } __packed;
 
