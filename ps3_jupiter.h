@@ -24,18 +24,10 @@
 
 #include "ps3_eurus.h"
 
-struct ps3_jupiter_event {
-	u32 unknown1;
-	u32 unknown2;
-	u32 unknown3;
-	u32 unknown4;
-	u8 res[48];
-};
-
 struct ps3_jupiter_event_listener {
 	struct list_head list;
 	void (*function)(struct ps3_jupiter_event_listener *listener,
-		struct ps3_jupiter_event *event);
+		struct ps3_eurus_event *event);
 	unsigned long data;
 };
 
@@ -43,7 +35,7 @@ int ps3_jupiter_register_event_listener(struct ps3_jupiter_event_listener *liste
 
 int ps3_jupiter_unregister_event_listener(struct ps3_jupiter_event_listener *listener);
 
-int ps3_jupiter_exec_eurus_cmd(enum ps3_eurus_cmd cmd,
+int ps3_jupiter_exec_eurus_cmd(enum ps3_eurus_cmd_id cmd,
 	void *payload, unsigned int payload_length,
 	unsigned int *response_status,
 	unsigned int *response_length, void *response);
