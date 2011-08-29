@@ -26,6 +26,7 @@
 
 enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_SET_ANTENNA		= 0x0029,
+	PS3_EURUS_CMD_GET_FW_VERSION		= 0x0099,
 	PS3_EURUS_CMD_0x203			= 0x0203,
 	PS3_EURUS_CMD_0x207			= 0x0207,
 	PS3_EURUS_CMD_ASSOCIATE			= 0x1001,
@@ -52,8 +53,15 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_0x1171			= 0x1171,
 };
 
+enum ps3_eurus_event_type {
+	PS3_EURUS_EVENT_TYPE_0x80		= 0x00000080,
+	PS3_EURUS_EVENT_TYPE_0x400		= 0x00000400,
+};
+
 enum ps3_eurus_event_id {
 	PS3_EURUS_EVENT_DEVICE_READY		= 0x00000001,
+
+	/* event type 0x80 */
 
 	PS3_EURUS_EVENT_BEACON_LOST		= 0x00000001,
 	PS3_EURUS_EVENT_CONNECTED		= 0x00000002,
@@ -64,8 +72,24 @@ enum ps3_eurus_event_id {
 	PS3_EURUS_EVENT_DEAUTH			= 0x00000001,
 };
 
+enum ps3_eurus_opmode {
+	PS3_EURUS_OPMODE_11BG			= 0x00,
+	PS3_EURUS_OPMODE_11B			= 0x01,
+	PS3_EURUS_OPMODE_11G			= 0x02,
+};
+
+enum ps3_eurus_wpa_security_type {
+	PS3_EURUS_WPA_SECURITY_WPA		= 0x00,
+	PS3_EURUS_WPA_SECURITY_RSN		= 0x01,
+};
+
+enum ps3_eurus_wpa_psk_type {
+	PS3_EURUS_WPA_PSK_PASSPHRASE		= 0x00,
+	PS3_EURUS_WPA_PSK_BIN			= 0x01,
+};
+
 struct ps3_eurus_cmd_hdr {
-	__le16 id;
+	__le16 id;			/* enum ps3_eurus_cmd_id */
 	__le16 tag;
 	__le16 status;
 	__le16 payload_length;
@@ -77,6 +101,10 @@ struct ps3_eurus_cmd_set_antenna {
 	u8 unknown2;
 };
 
+struct ps3_eurus_cmd_get_fw_version {
+	u8 version[62];
+};
+
 struct ps3_eurus_cmd_0x203 {
 	__le32 unknown;
 };
@@ -85,9 +113,49 @@ struct ps3_eurus_cmd_0x207 {
 	__le32 unknown;
 };
 
+struct ps3_eurus_cmd_associate {
+	u8 unknown;
+} __packed;
+
+struct ps3_eurus_cmd_common_config {
+	u8 unknown1;
+	u8 unknown2;
+	u8 opmode;	/* enum ps3_eurus_opmode */
+	u8 unknown3;
+	u8 bssid[6];
+	u8 ie[0];
+};
+
+struct ps3_eurus_cmd_wpa_config {
+	u8 unknown;
+	u8 security_type;	/* enum ps3_eurus_wpa_security_type */
+	u8 psk_type;		/* enum ps3_eurus_wpa_psk_type */
+	u8 psk[64];
+	__be32 group_cipher_suite;
+	__be32 pairwise_cipher_suite;
+	__be32 akm_cipher_suite;
+} __packed;
+
 struct ps3_eurus_cmd_0x1031 {
 	u8 unknown;
 	u8 res;
+} __packed;
+
+struct ps3_eurus_scan_result {
+	__le16 length;
+	u8 bssid[6];
+	u8 rssi;
+	u8 res[9];
+	u8 ie[0];
+};
+
+struct ps3_eurus_cmd_get_scan_results {
+	u8 count;
+	struct ps3_eurus_scan_result result[0];
+} __packed;
+
+struct ps3_eurus_cmd_diassociate {
+	u8 unknown;
 } __packed;
 
 struct ps3_eurus_cmd_set_mac_addr {
@@ -156,8 +224,8 @@ struct ps3_eurus_cmd_get_mac_addr {
 } __packed;
 
 struct ps3_eurus_event_hdr {
-	__le32 type;
-	__le32 id;
+	__le32 type;			/* enum ps3_eurus_event_type */
+	__le32 id;			/* enum ps3_eurus_event_id */
 	__le32 unknown1;
 	__le32 payload_length;
 	__le32 unknown2;
