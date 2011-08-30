@@ -100,7 +100,7 @@ enum ps3_eurus_wep_security {
 
 enum ps3_eurus_wpa_security {
 	PS3_EURUS_WPA_SECURITY_WPA		= 0x00,
-	PS3_EURUS_WPA_SECURITY_RSN		= 0x01,
+	PS3_EURUS_WPA_SECURITY_WPA2		= 0x01,
 };
 
 enum ps3_eurus_wpa_psk_type {
@@ -111,13 +111,13 @@ enum ps3_eurus_wpa_psk_type {
 enum ps3_eurus_wpa_cipher_suite {
 	PS3_EURUS_WPA_CIPHER_SUITE_WPA_TKIP	= 0x0050f202,
 	PS3_EURUS_WPA_CIPHER_SUITE_WPA_AES	= 0x0050f204,
-	PS3_EURUS_WPA_CIPHER_SUITE_RSN_TKIP	= 0x000fac02,
-	PS3_EURUS_WPA_CIPHER_SUITE_RSN_CCMP	= 0x000fac04,
+	PS3_EURUS_WPA_CIPHER_SUITE_WPA2_TKIP	= 0x000fac02,
+	PS3_EURUS_WPA_CIPHER_SUITE_WPA2_AES	= 0x000fac04,
 };
 
 enum ps3_eurus_wpa_akm_suite {
 	PS3_EURUS_WPA_AKM_SUITE_WPA_PSK		= 0x0050f202,
-	PS3_EURUS_WPA_AKM_SUITE_RSN_PSK		= 0x000fac02,
+	PS3_EURUS_WPA_AKM_SUITE_WPA2_PSK	= 0x000fac02,
 };
 
 struct ps3_eurus_cmd_hdr {
