@@ -914,7 +914,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	eurus_cmd_0x110b = (struct ps3_eurus_cmd_0x110b *) buf;
 	memset(eurus_cmd_0x110b, 0, sizeof(*eurus_cmd_0x110b));
 	eurus_cmd_0x110b->unknown1 = cpu_to_le32(0x1);
-	eurus_cmd_0x110b->unknown2 = cpu_to_le32(0x2000);
+	eurus_cmd_0x110b->unknown2 = cpu_to_le32(0x200000);
 
 	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_0x110b, eurus_cmd_0x110b, sizeof(*eurus_cmd_0x110b),
 	    &status, NULL, NULL);
