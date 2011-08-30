@@ -62,6 +62,10 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_0x1171			= 0x1171,
 };
 
+enum ps3_eurus_cmd_status {
+	PS3_EURUS_CMD_OK			= 0x0001,
+};
+
 enum ps3_eurus_event_type {
 	PS3_EURUS_EVENT_TYPE_0x40		= 0x00000040,
 	PS3_EURUS_EVENT_TYPE_0x80		= 0x00000080,
@@ -105,18 +109,21 @@ enum ps3_eurus_wpa_psk_type {
 };
 
 enum ps3_eurus_wpa_cipher_suite {
+	PS3_EURUS_WPA_CIPHER_SUITE_WPA_TKIP	= 0x0050f202,
+	PS3_EURUS_WPA_CIPHER_SUITE_WPA_AES	= 0x0050f204,
 	PS3_EURUS_WPA_CIPHER_SUITE_RSN_TKIP	= 0x000fac02,
 	PS3_EURUS_WPA_CIPHER_SUITE_RSN_CCMP	= 0x000fac04,
 };
 
 enum ps3_eurus_wpa_akm_suite {
+	PS3_EURUS_WPA_AKM_SUITE_WPA_PSK		= 0x0050f202,
 	PS3_EURUS_WPA_AKM_SUITE_RSN_PSK		= 0x000fac02,
 };
 
 struct ps3_eurus_cmd_hdr {
 	__le16 id;			/* enum ps3_eurus_cmd_id */
 	__le16 tag;
-	__le16 status;
+	__le16 status;			/* enum ps3_eurus_cmd_status */
 	__le16 payload_length;
 	u8 res[4];
 } __packed;
