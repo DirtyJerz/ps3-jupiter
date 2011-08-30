@@ -815,7 +815,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 
 	eurus_cmd_mcast_addr_filter = (struct ps3_eurus_cmd_mcast_addr_filter *) buf;
 	memset(eurus_cmd_mcast_addr_filter, 0, sizeof(*eurus_cmd_mcast_addr_filter));
-	eurus_cmd_mcast_addr_filter->word[7] |= cpu_to_be32(0x20);
+	eurus_cmd_mcast_addr_filter->word[7] |= cpu_to_le32(0x20000000);
 
 	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_SET_MCAST_ADDR_FILTER,
 	    eurus_cmd_mcast_addr_filter, sizeof(*eurus_cmd_mcast_addr_filter), &status, NULL, NULL);

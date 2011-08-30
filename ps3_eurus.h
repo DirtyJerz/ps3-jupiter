@@ -296,7 +296,7 @@ struct ps3_eurus_cmd_0x115b {
 } __packed;
 
 struct ps3_eurus_cmd_mcast_addr_filter {
-	__be32 word[8];
+	__le32 word[8];
 } __packed;
 
 struct ps3_eurus_cmd_0x116f {
