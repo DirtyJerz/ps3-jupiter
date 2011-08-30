@@ -87,9 +87,9 @@ enum ps3_eurus_event_id {
 };
 
 enum ps3_eurus_opmode {
-	PS3_EURUS_OPMODE_11BG			= 0x00,
-	PS3_EURUS_OPMODE_11B			= 0x01,
-	PS3_EURUS_OPMODE_11G			= 0x02,
+	PS3_EURUS_OPMODE_11B			= 0x00,
+	PS3_EURUS_OPMODE_11G			= 0x01,
+	PS3_EURUS_OPMODE_11BG			= 0x02,
 };
 
 enum ps3_eurus_wep_security {
