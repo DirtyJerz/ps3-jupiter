@@ -33,6 +33,7 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_0x61			= 0x0061,
 	PS3_EURUS_CMD_0x65			= 0x0065,
 	PS3_EURUS_CMD_GET_FW_VERSION		= 0x0099,
+	PS3_EURUS_CMD_GET_AP_OPMODE		= 0x00b7,
 	PS3_EURUS_CMD_SET_AP_OPMODE		= 0x00b9,
 	PS3_EURUS_CMD_0x1dd			= 0x01dd,
 	PS3_EURUS_CMD_0x1ed			= 0x01ed,
@@ -51,6 +52,7 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_START_SCAN		= 0x1035,
 	PS3_EURUS_CMD_DISASSOCIATE		= 0x1037,
 	PS3_EURUS_CMD_GET_RSSI			= 0x103d,
+	PS3_EURUS_CMD_GET_MAC_ADDR		= 0x103f,
 	PS3_EURUS_CMD_SET_MAC_ADDR		= 0x1041,
 	PS3_EURUS_CMD_0x105f			= 0x105f,
 	PS3_EURUS_CMD_0x1109			= 0x1109,
@@ -63,7 +65,7 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_GET_MCAST_ADDR_FILTER	= 0x1165,
 	PS3_EURUS_CMD_0x116d			= 0x116d,
 	PS3_EURUS_CMD_0x116f			= 0x116f,
-	PS3_EURUS_CMD_GET_MAC_ADDR		= 0x1117,
+	PS3_EURUS_CMD_GET_MAC_ADDR_LIST		= 0x1117,
 	PS3_EURUS_CMD_0x1171			= 0x1171,
 };
 
@@ -164,7 +166,7 @@ struct ps3_eurus_cmd_get_fw_version {
 	u8 version[62];
 } __packed;
 
-struct ps3_eurus_cmd_set_ap_opmode {
+struct ps3_eurus_cmd_ap_opmode {
 	__le32 opmode;	/* enum ps3_eurus_opmode */
 } __packed;
 
@@ -247,6 +249,11 @@ struct ps3_eurus_cmd_diassociate {
 	u8 unknown;
 } __packed;
 
+struct ps3_eurus_cmd_get_mac_addr {
+	u8 unknown;
+	u8 mac_addr[6];
+} __packed;
+
 struct ps3_eurus_cmd_set_mac_addr {
 	u8 mac_addr[6];
 } __packed;
@@ -315,7 +322,7 @@ struct ps3_eurus_cmd_0x116f {
 	__le32 unknown;
 } __packed;
 
-struct ps3_eurus_cmd_get_mac_addr {
+struct ps3_eurus_cmd_get_mac_addr_list {
 	__le16 count;	/* number of MAC addresses */
 	u8 mac_addr[0];
 } __packed;
