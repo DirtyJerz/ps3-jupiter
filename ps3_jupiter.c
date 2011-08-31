@@ -33,6 +33,7 @@
 #include <asm/ps3.h>
 #include <asm/lv1call.h>
 
+#include "ps3_eurus.h"
 #include "ps3_jupiter.h"
 
 #define PS3_JUPITER_EP			0x5

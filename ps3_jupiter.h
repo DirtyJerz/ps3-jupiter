@@ -22,8 +22,6 @@
 #ifndef _PS3_JUPITER_H
 #define _PS3_JUPITER_H
 
-#include "ps3_eurus.h"
-
 struct ps3_jupiter_event_listener {
 	struct list_head list;
 	void (*function)(struct ps3_jupiter_event_listener *listener,

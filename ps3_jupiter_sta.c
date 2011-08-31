@@ -31,6 +31,7 @@
 #include <linux/ieee80211.h>
 #include <net/iw_handler.h>
 
+#include "ps3_eurus.h"
 #include "ps3_jupiter.h"
 
 #define PS3_JUPITER_STA_CMD_BUFSIZE	2048
