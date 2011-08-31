@@ -32,6 +32,7 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_0x61			= 0x0061,
 	PS3_EURUS_CMD_0x65			= 0x0065,
 	PS3_EURUS_CMD_GET_FW_VERSION		= 0x0099,
+	PS3_EURUS_CMD_SET_AP_OPMODE		= 0x00b9,
 	PS3_EURUS_CMD_0x1dd			= 0x01dd,
 	PS3_EURUS_CMD_0x1ed			= 0x01ed,
 	PS3_EURUS_CMD_GET_HW_REVISION		= 0x01fb,
@@ -150,16 +151,20 @@ struct ps3_eurus_cmd_set_antenna {
 	u8 unknown2;
 } __packed;
 
-struct ps3_eurus_cmd_get_fw_version {
-	u8 version[62];
-} __packed;
-
 struct ps3_eurus_cmd_0x61 {
 	u8 unknown;
 } __packed;
 
 struct ps3_eurus_cmd_0x65 {
 	u8 unknown;
+} __packed;
+
+struct ps3_eurus_cmd_get_fw_version {
+	u8 version[62];
+} __packed;
+
+struct ps3_eurus_cmd_set_ap_opmode {
+	__le32 opmode;	/* enum ps3_eurus_opmode */
 } __packed;
 
 struct ps3_eurus_cmd_0x1dd {
