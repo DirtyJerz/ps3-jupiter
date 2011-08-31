@@ -780,6 +780,24 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 		}
 	}
 
+	iwe.cmd = SIOCGIWMODE;
+	if (le16_to_cpu(scan_result->capability) & (WLAN_CAPABILITY_ESS | WLAN_CAPABILITY_IBSS)) {
+		if (le16_to_cpu(scan_result->capability) & WLAN_CAPABILITY_ESS)
+			iwe.u.mode = IW_MODE_MASTER;
+		else
+			iwe.u.mode = IW_MODE_ADHOC;
+		stream = iwe_stream_add_event(info, stream, ends, &iwe, IW_EV_UINT_LEN);
+	}
+
+	memset(&iwe, 0, sizeof(iwe));
+	iwe.cmd = SIOCGIWENCODE;
+	if (le16_to_cpu(scan_result->capability) & WLAN_CAPABILITY_PRIVACY)
+		iwe.u.data.flags = IW_ENCODE_ENABLED | IW_ENCODE_NOKEY;
+	else
+		iwe.u.data.flags = IW_ENCODE_DISABLED;
+	iwe.u.data.length = 0;
+	stream = iwe_stream_add_point(info, stream, ends, &iwe, scan_result->bssid);
+
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVQUAL;
 	iwe.u.qual.updated  = IW_QUAL_ALL_UPDATED | IW_QUAL_QUAL_INVALID | IW_QUAL_NOISE_INVALID;
