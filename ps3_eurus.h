@@ -237,7 +237,9 @@ struct ps3_eurus_scan_result {
 	__le16 length;
 	u8 bssid[6];
 	u8 rssi;
-	u8 unknown[12];
+	__le64 timestamp;
+	__le16 beacon_period;		/* in msec */
+	__le16 capability;
 	u8 ie[0];
 } __packed;
 
