@@ -59,6 +59,7 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_SET_MCAST_ADDR_FILTER	= 0x1161,
 	PS3_EURUS_CMD_CLEAR_MCAST_ADDR_FILTER	= 0x1163,
 	PS3_EURUS_CMD_GET_MCAST_ADDR_FILTER	= 0x1165,
+	PS3_EURUS_CMD_0x116d			= 0x116d,
 	PS3_EURUS_CMD_0x116f			= 0x116f,
 	PS3_EURUS_CMD_GET_MAC_ADDR		= 0x1117,
 	PS3_EURUS_CMD_0x1171			= 0x1171,
@@ -298,6 +299,10 @@ struct ps3_eurus_cmd_0x115b {
 
 struct ps3_eurus_cmd_mcast_addr_filter {
 	__le32 word[8];
+} __packed;
+
+struct ps3_eurus_cmd_0x116d {
+	__le32 unknown;
 } __packed;
 
 struct ps3_eurus_cmd_0x116f {
