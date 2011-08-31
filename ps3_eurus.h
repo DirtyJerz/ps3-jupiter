@@ -355,4 +355,23 @@ struct ps3_eurus_event {
 	u8 payload[44];
 } __packed;
 
+/*
+ * ps3_eurus_rssi2percentage
+ */
+static inline u8 ps3_eurus_rssi2percentage(u8 rssi)
+{
+	if (rssi > 89) {
+		return 1;
+	} else if (rssi < 50) {
+		return 100;
+	} else {
+		u32 a, b;
+
+		a = (90 - rssi) * 100;
+		b = (((u64) a) * 0x66666667) >> 36;
+
+		return (b - (a >> 31));
+	}
+}
+
 #endif
