@@ -96,13 +96,13 @@ enum ps3_eurus_opmode {
 	PS3_EURUS_OPMODE_11BG			= 0x02,
 };
 
-enum ps3_eurus_wep_security {
+enum ps3_eurus_wep_security_mode {
 	PS3_EURUS_WEP_SECURITY_NONE		= 0x00,
 	PS3_EURUS_WEP_SECURITY_40BIT		= 0x01,
 	PS3_EURUS_WEP_SECURITY_104BIT		= 0x02,
 };
 
-enum ps3_eurus_wpa_security {
+enum ps3_eurus_wpa_security_mode {
 	PS3_EURUS_WPA_SECURITY_WPA		= 0x00,
 	PS3_EURUS_WPA_SECURITY_WPA2		= 0x01,
 };
@@ -209,14 +209,14 @@ struct ps3_eurus_cmd_common_config {
 
 struct ps3_eurus_cmd_wep_config {
 	u8 unknown1;
-	u8 security;		/* enum ps3_eurus_wep_security */
+	u8 security_mode;		/* enum ps3_eurus_wep_security_mode */
 	__le16 unknown2;
 	u8 key[4][16];
 } __packed;
 
 struct ps3_eurus_cmd_wpa_config {
 	u8 unknown;
-	u8 security;			/* enum ps3_eurus_wpa_security */
+	u8 security_mode;		/* enum ps3_eurus_wpa_security_mode */
 	u8 psk_type;			/* enum ps3_eurus_wpa_psk_type */
 	u8 psk[64];
 	__be32 group_cipher_suite;	/* enum ps3_eurus_wpa_cipher_suite */
