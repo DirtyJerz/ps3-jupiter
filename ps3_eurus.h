@@ -67,6 +67,7 @@ enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_0x116f			= 0x116f,
 	PS3_EURUS_CMD_GET_MAC_ADDR_LIST		= 0x1117,
 	PS3_EURUS_CMD_0x1171			= 0x1171,
+	PS3_EURUS_CMD_GET_CHANNEL_INFO		= 0xfffd,
 };
 
 enum ps3_eurus_cmd_status {
@@ -236,13 +237,21 @@ struct ps3_eurus_scan_result {
 	__le16 length;
 	u8 bssid[6];
 	u8 rssi;
-	u8 unknown[9];
+	u8 unknown[12];
 	u8 ie[0];
 } __packed;
 
 struct ps3_eurus_cmd_get_scan_results {
 	u8 count;
 	struct ps3_eurus_scan_result result[0];
+} __packed;
+
+struct ps3_eurus_cmd_start_scan {
+	u8 unknown1;
+	u8 unknown2;
+	__le16 unknown3;
+	u8 res[6];
+	u8 ie[0];
 } __packed;
 
 struct ps3_eurus_cmd_diassociate {
@@ -325,6 +334,10 @@ struct ps3_eurus_cmd_0x116f {
 struct ps3_eurus_cmd_get_mac_addr_list {
 	__le16 count;	/* number of MAC addresses */
 	u8 mac_addr[0];
+} __packed;
+
+struct ps3_eurus_cmd_get_channel_info {
+	u16 channel_info;
 } __packed;
 
 struct ps3_eurus_event_hdr {

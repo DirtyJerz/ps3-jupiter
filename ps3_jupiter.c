@@ -437,6 +437,7 @@ static int _ps3_jupiter_exec_eurus_cmd(struct ps3_jupiter_dev *jd,
 	struct ps3_jupiter_pkt_hdr *pkt_hdr;
 	struct ps3_jupiter_cmd_hdr *cmd_hdr;
 	struct ps3_eurus_cmd_hdr *eurus_cmd_hdr;
+	struct ps3_eurus_cmd_get_channel_info *eurus_cmd_get_channel_info;
 	unsigned long flags;
 	int err;
 
@@ -460,6 +461,29 @@ static int _ps3_jupiter_exec_eurus_cmd(struct ps3_jupiter_dev *jd,
 
 	dev_dbg(&udev->dev, "EURUS command 0x%04x payload length %d\n",
 	    cmd, payload_length);
+
+	/* internal commands */
+
+	if (cmd == PS3_EURUS_CMD_GET_CHANNEL_INFO) {
+		if (payload_length < sizeof(*eurus_cmd_get_channel_info)) {
+			err = -EINVAL;
+			goto done;
+		}
+
+		if (response_status)
+			*response_status = PS3_EURUS_CMD_OK;
+
+		if (response_length && response) {
+			*response_length = sizeof(*eurus_cmd_get_channel_info);
+			eurus_cmd_get_channel_info = (struct ps3_eurus_cmd_get_channel_info *) response;
+			memset(eurus_cmd_get_channel_info, 0, sizeof(*eurus_cmd_get_channel_info));
+			eurus_cmd_get_channel_info->channel_info = jd->channel_info >> 48;
+		}
+
+		err = 0;
+
+		goto done;
+	}
 
 	pkt_hdr = (struct ps3_jupiter_pkt_hdr *) jd->cmd_buf;
 	memset(pkt_hdr, 0, sizeof(*pkt_hdr));
@@ -732,10 +756,8 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	int err;
 
 	buf = kmalloc(PS3_JUPITER_CMD_BUFSIZE, GFP_KERNEL);
-	if (!buf) {
-		err = -ENOMEM;
-		goto done;
-	}
+	if (!buf)
+		return -ENOMEM;
 
 	/* state 1 */
 
@@ -762,7 +784,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x1171, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -788,7 +810,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x116f, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -807,7 +829,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x115b, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -825,7 +847,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_SET_MCAST_ADDR_FILTER, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -849,7 +871,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x110d, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -868,7 +890,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x1031, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -878,15 +900,15 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	memset(eurus_cmd_set_mac_addr, 0, sizeof(*eurus_cmd_set_mac_addr));
 	memcpy(eurus_cmd_set_mac_addr->mac_addr, jd->mac_addr, sizeof(jd->mac_addr));
 
-	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_SET_MAC_ADDR, eurus_cmd_set_mac_addr, sizeof(*eurus_cmd_set_mac_addr),
-	    &status, NULL, NULL);
+	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_SET_MAC_ADDR,
+	    eurus_cmd_set_mac_addr, sizeof(*eurus_cmd_set_mac_addr), &status, NULL, NULL);
 	if (err)
 		goto done;
 
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_SET_MAC_ADDR, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -897,15 +919,15 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	eurus_cmd_set_antenna->unknown1 = 0x2;
 	eurus_cmd_set_antenna->unknown2 = 0x2;
 
-	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_SET_ANTENNA, eurus_cmd_set_antenna, sizeof(*eurus_cmd_set_antenna),
-	    &status, NULL, NULL);
+	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_SET_ANTENNA,
+	    eurus_cmd_set_antenna, sizeof(*eurus_cmd_set_antenna), &status, NULL, NULL);
 	if (err)
 		goto done;
 
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_SET_ANTENNA, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -924,7 +946,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x110b, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -949,7 +971,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x1109, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -967,7 +989,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x207, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -985,7 +1007,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x203, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -1015,7 +1037,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_0x105f, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -1035,7 +1057,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	dev_dbg(&udev->dev, "EURUS command 0x%04x status (0x%04x)\n", PS3_EURUS_CMD_GET_FW_VERSION, status);
 
 	if (status != PS3_EURUS_CMD_OK) {
-		err = -ENODEV;
+		err = -EIO;
 		goto done;
 	}
 
@@ -1134,7 +1156,8 @@ static int ps3_jupiter_probe(struct usb_interface *interface,
 	memcpy(jd->mac_addr, &v1, ETH_ALEN);
 
 	dev_info(&udev->dev, "MAC address: %02x:%02x:%02x:%02x:%02x:%02x\n",
-	    jd->mac_addr[0], jd->mac_addr[1], jd->mac_addr[2], jd->mac_addr[3], jd->mac_addr[4], jd->mac_addr[5]);
+	    jd->mac_addr[0], jd->mac_addr[1], jd->mac_addr[2],
+	    jd->mac_addr[3], jd->mac_addr[4], jd->mac_addr[5]);
 
 	/* get channel info */
 
@@ -1208,6 +1231,8 @@ static void ps3_jupiter_disconnect(struct usb_interface *interface)
  */
 static int ps3_jupiter_suspend(struct usb_interface *interface, pm_message_t state)
 {
+	/*XXX: implement */
+
 	return 0;
 }
 
@@ -1216,6 +1241,8 @@ static int ps3_jupiter_suspend(struct usb_interface *interface, pm_message_t sta
  */
 static int ps3_jupiter_resume(struct usb_interface *interface)
 {
+	/*XXX: implement */
+
 	return 0;
 }
 #endif /* CONFIG_PM */
