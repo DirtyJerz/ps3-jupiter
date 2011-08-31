@@ -243,6 +243,8 @@ struct ps3_eurus_scan_result {
 	u8 ie[0];
 } __packed;
 
+#define PS3_EURUS_SCAN_RESULTS_MAXSIZE	0x5b0
+
 struct ps3_eurus_cmd_get_scan_results {
 	u8 count;
 	struct ps3_eurus_scan_result result[0];
@@ -332,6 +334,8 @@ struct ps3_eurus_cmd_0x116d {
 struct ps3_eurus_cmd_0x116f {
 	__le32 unknown;
 } __packed;
+
+#define PS3_EURUS_MAC_ADDR_LIST_MAXSIZE	0xc2
 
 struct ps3_eurus_cmd_get_mac_addr_list {
 	__le16 count;	/* number of MAC addresses */

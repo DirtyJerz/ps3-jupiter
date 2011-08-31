@@ -600,7 +600,7 @@ static int ps3_jupiter_sta_start_scan(struct ps3_jupiter_sta_dev *jstad,
 {
 	struct ps3_eurus_cmd_start_scan *eurus_cmd_start_scan;
 	struct usb_device *udev = jstad->udev;
-	unsigned char *buf;
+	unsigned char *buf = NULL;
 	unsigned int payload_length, status;
 	unsigned int i, chan;
 	u8 *chan_ie, *essid_ie;
@@ -686,13 +686,14 @@ static int ps3_jupiter_sta_get_scan_results(struct ps3_jupiter_sta_dev *jstad)
 	int err;
 
 	if (!jstad->scan_results) {
-		jstad->scan_results = kmalloc(0x5b0, GFP_KERNEL);
+		jstad->scan_results = kmalloc(PS3_EURUS_SCAN_RESULTS_MAXSIZE, GFP_KERNEL);
 		if (!jstad->scan_results)
 			return -ENOMEM;
 	}
 
 	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_GET_SCAN_RESULTS,
-	    jstad->scan_results, 0x5b0, &status, &response_length, jstad->scan_results);
+	    jstad->scan_results, PS3_EURUS_SCAN_RESULTS_MAXSIZE, &status,
+	    &response_length, jstad->scan_results);
 	if (err)
 		goto done;
 
@@ -849,7 +850,7 @@ static int ps3_jupiter_sta_setup_netdev(struct ps3_jupiter_sta_dev *jstad)
 	struct net_device *netdev = jstad->netdev;
 	struct ps3_eurus_cmd_get_mac_addr_list *eurus_cmd_get_mac_addr_list;
 	struct ps3_eurus_cmd_set_mac_addr *eurus_cmd_set_mac_addr;
-	unsigned char *buf;
+	unsigned char *buf = NULL;
 	unsigned int status, response_length;
 	int err;
 
@@ -860,10 +861,11 @@ static int ps3_jupiter_sta_setup_netdev(struct ps3_jupiter_sta_dev *jstad)
 	/* get MAC address list */
 
 	eurus_cmd_get_mac_addr_list = (struct ps3_eurus_cmd_get_mac_addr_list *) buf;
-	memset(eurus_cmd_get_mac_addr_list, 0, 0xc2);
+	memset(eurus_cmd_get_mac_addr_list, 0, PS3_EURUS_MAC_ADDR_LIST_MAXSIZE);
 
 	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_GET_MAC_ADDR_LIST,
-	    eurus_cmd_get_mac_addr_list, 0xc2, &status, &response_length, eurus_cmd_get_mac_addr_list);
+	    eurus_cmd_get_mac_addr_list, PS3_EURUS_MAC_ADDR_LIST_MAXSIZE, &status,
+	    &response_length, eurus_cmd_get_mac_addr_list);
 	if (err)
 		goto done;
 
@@ -924,7 +926,7 @@ done:
 static int ps3_jupiter_sta_get_channel_info(struct ps3_jupiter_sta_dev *jstad)
 {
 	struct ps3_eurus_cmd_get_channel_info *eurus_cmd_get_channel_info;
-	unsigned char *buf;
+	unsigned char *buf = NULL;
 	unsigned int status, response_length;
 	int err;
 
