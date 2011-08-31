@@ -801,8 +801,8 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = IWEVQUAL;
 	iwe.u.qual.updated  = IW_QUAL_ALL_UPDATED | IW_QUAL_QUAL_INVALID | IW_QUAL_NOISE_INVALID;
-	iwe.u.qual.level = scan_result->rssi;
-	iwe.u.qual.qual = scan_result->rssi;
+	iwe.u.qual.level = ps3_eurus_rssi2percentage(scan_result->rssi);
+	iwe.u.qual.qual = ps3_eurus_rssi2percentage(scan_result->rssi);
 	iwe.u.qual.noise = 0;
 	stream = iwe_stream_add_event(info, stream, ends, &iwe, IW_EV_QUAL_LEN);
 
