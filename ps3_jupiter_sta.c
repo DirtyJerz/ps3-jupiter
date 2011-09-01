@@ -642,7 +642,7 @@ static int ps3_jupiter_sta_start_scan(struct ps3_jupiter_sta_dev *jstad,
 	payload_length = chan_ie + 2 + chan_ie[1] - (u8 *) eurus_cmd_start_scan;
 
 	if (essid && essid_length) {
-		essid_ie = chan_ie + chan_ie[1];
+		essid_ie = chan_ie + 2 + chan_ie[1];
 		essid_ie[0] = WLAN_EID_SSID; 	/* ie id */
 		essid_ie[1] = essid_length;	/* ie length */
 		memcpy(essid_ie + 2, essid, essid_length);
