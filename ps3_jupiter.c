@@ -291,6 +291,9 @@ static void ps3_jupiter_irq_urb_complete(struct urb *urb)
 		break;
 		}
 	break;
+	case -EINPROGRESS:
+		/* ignore */
+	break;
 	case -ECONNRESET:
 	case -ENOENT:
 	case -ESHUTDOWN:
@@ -317,6 +320,10 @@ static void ps3_jupiter_cmd_urb_complete(struct urb *urb)
 
 	switch (urb->status) {
 	case 0:
+		/* success */
+	break;
+	case -EINPROGRESS:
+		/* ignore */
 	break;
 	case -ECONNRESET:
 	case -ENOENT:
