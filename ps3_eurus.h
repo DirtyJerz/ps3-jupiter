@@ -164,7 +164,7 @@ struct ps3_eurus_cmd_0x65 {
 } __packed;
 
 struct ps3_eurus_cmd_get_fw_version {
-	u8 version[62];
+	u8 version[62];	/* string */
 } __packed;
 
 struct ps3_eurus_cmd_ap_opmode {
@@ -364,18 +364,12 @@ struct ps3_eurus_event {
  */
 static inline u8 ps3_eurus_rssi2percentage(u8 rssi)
 {
-	if (rssi > 89) {
+	if (rssi > 89)
 		return 1;
-	} else if (rssi < 50) {
+	else if (rssi < 50)
 		return 100;
-	} else {
-		u32 a, b;
-
-		a = (90 - rssi) * 100;
-		b = (((u64) a) * 0x66666667) >> 36;
-
-		return (b - (a >> 31));
-	}
+	else
+		return ((90 - rssi) * 100) / 40;
 }
 
 #endif
