@@ -372,4 +372,46 @@ static inline u8 ps3_eurus_rssi2percentage(u8 rssi)
 		return ((90 - rssi) * 100) / 40;
 }
 
+#define PS3_EURUS_MCAST_ADDR_HASH2VAL(h)	(1 << ((h) & 0x1f))
+#define PS3_EURUS_MCAST_ADDR_HASH2POS(h)	(((h) >> 5) & 0x7)
+
+/*
+ * ps3_eurus_mcast_addr_hash
+ */
+static inline u8 ps3_eurus_mcast_addr_hash(const u8 mac_addr[ETH_ALEN])
+{
+	u8 buf[ETH_ALEN];
+	u32 h;
+	unsigned int i, j;
+
+	memcpy(buf, mac_addr, ETH_ALEN);
+
+	/* reverse bits in each byte */
+
+	for (i = 0; i < ETH_ALEN; i++) {
+		buf[i] = (buf[i] >> 4) | ((buf[i] & 0xf) << 4);
+		buf[i] = ((buf[i] & 0xcc) >> 2) | ((buf[i] & 0x33) << 2);
+		buf[i] = ((buf[i] & 0xaa) >> 1) | ((buf[i] & 0x55) << 1);
+	}
+
+        h = 0xffffffff;
+
+        for (i = 0; i < ETH_ALEN; i++) {
+                h = (((unsigned int) buf[i]) << 24) ^ h;
+
+                for (j = 0; j < 8; j++) {
+                        if (((int) h) >= 0) {
+                                h = h << 1;
+                        } else {
+                                h = (h << 1) ^ 0x4c10000;
+                                h = h ^ 0x1db7;
+                        }
+                }
+        }
+
+        h = ((h >> 24) & 0xf8) | (h & 0x7);
+
+        return (h & 0xff);
+}
+
 #endif
