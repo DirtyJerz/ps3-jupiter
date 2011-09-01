@@ -724,6 +724,10 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 	struct usb_device *udev = jstad->udev;
 	struct iw_event iwe;
 	u8 *ie;
+	u8 rate[64];
+	unsigned int nrate = 0;
+	char *tmp;
+	unsigned int i;
 
 	memset(&iwe, 0, sizeof(iwe));
 	iwe.cmd = SIOCGIWAP;
@@ -741,7 +745,10 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 			stream = iwe_stream_add_point(info, stream, ends, &iwe, &ie[2]);
 		break;
 		case WLAN_EID_SUPP_RATES:
-			/*XXX: implement */
+		case 0x32:	/* extended supported rates */
+			/* collect all rates and add them later */
+			memcpy(&rate[nrate], &ie[2], ie[1]);
+			nrate += ie[1];
 		break;
 		case WLAN_EID_DS_PARAMS:
 			memset(&iwe, 0, sizeof(iwe));
@@ -756,10 +763,6 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 			iwe.cmd = IWEVGENIE;
 			iwe.u.data.length = 2 + ie[1];
 			stream = iwe_stream_add_point(info, stream, ends, &iwe, ie);
-		break;
-		/* extended supported rates */
-		case 0x32:
-			/*XXX: implement */
 		break;
 		case WLAN_EID_GENERIC:
 		{
@@ -781,6 +784,19 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 			dev_dbg(&udev->dev, "ignore ie with id 0x%02x length %d\n", ie[0], ie[1]);
 		}
 	}
+
+	tmp = stream + iwe_stream_lcp_len(info);
+
+	for (i = 0; i < nrate; i++) {
+		memset(&iwe, 0, sizeof(iwe));
+		iwe.cmd = SIOCGIWRATE;
+		iwe.u.bitrate.fixed = 0;
+		iwe.u.bitrate.disabled = 0;
+		iwe.u.bitrate.value = (rate[i] & 0x7f) * 500000;
+		tmp = iwe_stream_add_value(info, stream, tmp, ends, &iwe, IW_EV_PARAM_LEN);
+	}
+
+	stream = tmp;
 
 	iwe.cmd = SIOCGIWMODE;
 	if (le16_to_cpu(scan_result->capability) & (WLAN_CAPABILITY_ESS | WLAN_CAPABILITY_IBSS)) {
