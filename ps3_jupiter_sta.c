@@ -34,25 +34,55 @@
 #include "ps3_eurus.h"
 #include "ps3_jupiter.h"
 
-#define PS3_JUPITER_STA_CMD_BUFSIZE	2048
+#define PS3_JUPITER_STA_CMD_BUFSIZE		2048
 
-#define PS3_JUPITER_STA_EP		0x6
+#define PS3_JUPITER_STA_EP			0x6
 
-#define PS3_JUPITER_STA_RX_URBS		4
+#define PS3_JUPITER_STA_WEP_KEYS		4
+
+#define PS3_JUPITER_STA_WPA_PSK_LENGTH		32
+
+#define PS3_JUPITER_STA_RX_URBS			4
 
 enum ps3_jupiter_sta_scan_status {
-	PS3_JUPITER_STA_SCAN_FAILED = 0,
+	PS3_JUPITER_STA_SCAN_INVALID = 0,
 	PS3_JUPITER_STA_SCAN_IN_PROGRESS,
-	PS3_JUPITER_STA_SCAN_SUCCESS
+	PS3_JUPITER_STA_SCAN_OK
+};
+
+enum ps3_jupiter_sta_config_bits {
+	PS3_JUPITER_STA_CONFIG_ESSID_SET = 0,
+	PS3_JUPITER_STA_CONFIG_BSSID_SET,
+	PS3_JUPITER_STA_CONFIG_WPA_PSK_SET
+};
+
+enum ps3_jupiter_sta_auth_mode {
+	PS3_JUPITER_STA_AUTH_OPEN = 0,
+	PS3_JUPITER_STA_AUTH_SHARED_KEY
+};
+
+enum ps3_jupiter_sta_wpa_mode {
+	PS3_JUPITER_STA_WPA_MODE_NONE = 0,
+	PS3_JUPITER_STA_WPA_MODE_WPA,
+	PS3_JUPITER_STA_WPA_MODE_WPA2
+};
+
+enum ps3_jupiter_sta_cipher_mode {
+	PS3_JUPITER_STA_CIPHER_NONE = 0,
+	PS3_JUPITER_STA_CIPHER_WEP,
+	PS3_JUPITER_STA_CIPHER_TKIP,
+	PS3_JUPITER_STA_CIPHER_AES
 };
 
 struct ps3_jupiter_sta_dev {
 	struct net_device *netdev;
 
+	struct usb_device *udev;
+
+	spinlock_t lock;
+
 	struct iw_public_data wireless_data;
 	struct iw_statistics wireless_stat;
-
-	struct usb_device *udev;
 
 	struct ps3_jupiter_event_listener event_listener;
 
@@ -62,6 +92,26 @@ struct ps3_jupiter_sta_dev {
 	enum ps3_jupiter_sta_scan_status scan_status;
 
 	struct mutex scan_lock;
+
+	unsigned long config_status;
+
+	enum ps3_jupiter_sta_auth_mode auth_mode;
+
+	enum ps3_jupiter_sta_wpa_mode wpa_mode;
+	enum ps3_jupiter_sta_cipher_mode group_cipher_mode;
+	enum ps3_jupiter_sta_cipher_mode pairwise_cipher_mode;
+
+	u8 essid[IW_ESSID_MAX_SIZE];
+	unsigned int essid_length;
+
+	u8 bssid[ETH_ALEN];
+
+	unsigned long key_config_status;
+	u8 key[PS3_JUPITER_STA_WEP_KEYS][IW_ENCODING_TOKEN_MAX];
+	unsigned int key_length[PS3_JUPITER_STA_WEP_KEYS];
+	unsigned int curr_key_index;
+
+	u8 psk[PS3_JUPITER_STA_WPA_PSK_LENGTH];
 
 	struct urb *rx_urb[PS3_JUPITER_STA_RX_URBS];
 };
@@ -105,6 +155,8 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 	struct ps3_eurus_scan_result *scan_result,
 	size_t scan_result_length, struct iw_request_info *info, char *stream, char *ends);
 
+static void ps3_jupiter_sta_reset_state(struct ps3_jupiter_sta_dev *jstad);
+
 /*
  * ps3_jupiter_sta_get_name
  */
@@ -112,6 +164,19 @@ static int ps3_jupiter_sta_get_name(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
 	strcpy(wrqu->name, "IEEE 802.11bg");
+
+	return 0;
+}
+
+/*
+ * ps3_jupiter_sta_get_nick
+ */
+static int ps3_jupiter_sta_get_nick(struct net_device *netdev,
+	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
+{
+	strcpy(extra, "ps3_jupiter_sta");
+	wrqu->data.length = strlen(extra);
+	wrqu->data.flags = 1;
 
 	return 0;
 }
@@ -178,6 +243,26 @@ static int ps3_jupiter_sta_get_range(struct net_device *netdev,
 }
 
 /*
+ * ps3_jupiter_sta_set_mode
+ */
+static int ps3_jupiter_sta_set_mode(struct net_device *netdev,
+	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
+{
+	return (wrqu->mode == IW_MODE_INFRA) ? 0 : -EOPNOTSUPP;
+}
+
+/*
+ * ps3_jupiter_sta_get_mode
+ */
+static int ps3_jupiter_sta_get_mode(struct net_device *netdev,
+	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
+{
+	wrqu->mode = IW_MODE_INFRA;
+
+	return 0;
+}
+
+/*
  * ps3_jupiter_sta_set_scan
  */
 static int ps3_jupiter_sta_set_scan(struct net_device *netdev,
@@ -222,7 +307,7 @@ static int ps3_jupiter_sta_get_scan(struct net_device *netdev,
 	if (jstad->scan_status == PS3_JUPITER_STA_SCAN_IN_PROGRESS) {
 		err = -EAGAIN;
 		goto done;
-	} else if (jstad->scan_status == PS3_JUPITER_STA_SCAN_FAILED) {
+	} else if (jstad->scan_status == PS3_JUPITER_STA_SCAN_INVALID) {
 		err = -ENODEV;
 		goto done;
 	}
@@ -264,9 +349,74 @@ done:
 static int ps3_jupiter_sta_set_auth(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	struct iw_param *param = &wrqu->param;
+	unsigned long irq_flags;
+	int err = 0;
 
-	return 0;
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	switch (param->flags & IW_AUTH_INDEX) {
+	case IW_AUTH_WPA_VERSION:
+		if (param->value & IW_AUTH_WPA_VERSION_DISABLED) {
+			jstad->wpa_mode = PS3_JUPITER_STA_WPA_MODE_NONE;
+			jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_WEP;
+			jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_WEP;
+		} else if (param->value & IW_AUTH_WPA_VERSION_WPA) {
+			jstad->wpa_mode = PS3_JUPITER_STA_WPA_MODE_WPA;
+			jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_TKIP;
+			jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_TKIP;
+		} else if (param->value & IW_AUTH_WPA_VERSION_WPA2) {
+			jstad->wpa_mode = PS3_JUPITER_STA_WPA_MODE_WPA2;
+			jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_AES;
+			jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_AES;
+		}
+	break;
+	case IW_AUTH_CIPHER_GROUP:
+		if (param->value & IW_AUTH_CIPHER_NONE)
+			jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+		else if (param->value & (IW_AUTH_CIPHER_WEP40 | IW_AUTH_CIPHER_WEP104))
+			jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_WEP;
+		else if (param->value & IW_AUTH_CIPHER_TKIP)
+			jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_TKIP;
+		else if (param->value & IW_AUTH_CIPHER_CCMP)
+			jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_AES;
+	break;
+	case IW_AUTH_CIPHER_PAIRWISE:
+		if (param->value & IW_AUTH_CIPHER_NONE)
+			jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+		else if (param->value & (IW_AUTH_CIPHER_WEP40 | IW_AUTH_CIPHER_WEP104))
+			jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_WEP;
+		else if (param->value & IW_AUTH_CIPHER_TKIP)
+			jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_TKIP;
+		else if (param->value & IW_AUTH_CIPHER_CCMP)
+			jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_AES;
+	break;
+	case IW_AUTH_80211_AUTH_ALG:
+		if (param->value & IW_AUTH_ALG_OPEN_SYSTEM)
+			jstad->auth_mode = PS3_JUPITER_STA_AUTH_OPEN;
+		else if (param->value & IW_AUTH_ALG_SHARED_KEY)
+			jstad->auth_mode = PS3_JUPITER_STA_AUTH_SHARED_KEY;
+		else
+			err = -EINVAL;
+	break;
+	case IW_AUTH_WPA_ENABLED:
+		if (param->value)
+			jstad->wpa_mode = PS3_JUPITER_STA_WPA_MODE_WPA;
+		else
+			jstad->wpa_mode = PS3_JUPITER_STA_WPA_MODE_NONE;
+	break;
+	case IW_AUTH_KEY_MGMT:
+		if (!(param->value & IW_AUTH_KEY_MGMT_PSK))
+			err = -EOPNOTSUPP;
+	break;
+	default:
+		err = -EOPNOTSUPP;
+	}
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return err;
 }
 
 /*
@@ -275,9 +425,53 @@ static int ps3_jupiter_sta_set_auth(struct net_device *netdev,
 static int ps3_jupiter_sta_get_auth(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	struct iw_param *param = &wrqu->param;
+	unsigned long irq_flags;
+	int err = 0;
 
-	return 0;
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	switch (param->flags & IW_AUTH_INDEX) {
+	case IW_AUTH_WPA_VERSION:
+	switch (jstad->wpa_mode) {
+	case PS3_JUPITER_STA_WPA_MODE_WPA:
+		param->value |= IW_AUTH_WPA_VERSION_WPA;
+	break;
+	case PS3_JUPITER_STA_WPA_MODE_WPA2:
+		param->value |= IW_AUTH_WPA_VERSION_WPA2;
+	break;
+	default:
+		param->value |= IW_AUTH_WPA_VERSION_DISABLED;
+	}
+	break;
+	case IW_AUTH_80211_AUTH_ALG:
+	switch (jstad->auth_mode) {
+	case PS3_JUPITER_STA_AUTH_OPEN:
+		param->value |= IW_AUTH_ALG_OPEN_SYSTEM;
+	break;
+	case PS3_JUPITER_STA_AUTH_SHARED_KEY:
+		param->value |= IW_AUTH_ALG_SHARED_KEY;
+	break;
+	}
+	break;
+	case IW_AUTH_WPA_ENABLED:
+	switch (jstad->wpa_mode) {
+	case PS3_JUPITER_STA_WPA_MODE_WPA:
+	case PS3_JUPITER_STA_WPA_MODE_WPA2:
+		param->value = 1;
+	break;
+	default:
+		param->value = 0;
+	}
+	break;
+	default:
+		err = -EOPNOTSUPP;
+	}
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return err;
 }
 
 /*
@@ -286,7 +480,23 @@ static int ps3_jupiter_sta_get_auth(struct net_device *netdev,
 static int ps3_jupiter_sta_set_essid(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	unsigned long irq_flags;
+
+	if (IW_ESSID_MAX_SIZE < wrqu->essid.length)
+		return -EINVAL;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	if (wrqu->essid.flags) {
+		memcpy(jstad->essid, extra, wrqu->essid.length);
+		jstad->essid_length = wrqu->essid.length;
+		set_bit(PS3_JUPITER_STA_CONFIG_ESSID_SET, &jstad->config_status);
+	} else {
+		clear_bit(PS3_JUPITER_STA_CONFIG_ESSID_SET, &jstad->config_status);
+	}
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
 
 	return 0;
 }
@@ -297,29 +507,20 @@ static int ps3_jupiter_sta_set_essid(struct net_device *netdev,
 static int ps3_jupiter_sta_get_essid(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	unsigned long irq_flags;
 
-	return 0;
-}
+	spin_lock_irqsave(&jstad->lock, irq_flags);
 
-/*
- * ps3_jupiter_sta_set_encode
- */
-static int ps3_jupiter_sta_set_encode(struct net_device *netdev,
-	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
-{
-	/*XXX: implement */
+	if (test_bit(PS3_JUPITER_STA_CONFIG_ESSID_SET, &jstad->config_status)) {
+		memcpy(extra, jstad->essid, jstad->essid_length);
+		wrqu->essid.length = jstad->essid_length;
+		wrqu->essid.flags = 1;
+	} else {
+		wrqu->essid.flags = 0;
+	}
 
-	return 0;
-}
-
-/*
- * ps3_jupiter_sta_get_encode
- */
-static int ps3_jupiter_sta_get_encode(struct net_device *netdev,
-	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
-{
-	/*XXX: implement */
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
 
 	return 0;
 }
@@ -330,7 +531,22 @@ static int ps3_jupiter_sta_get_encode(struct net_device *netdev,
 static int ps3_jupiter_sta_set_ap(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	unsigned long irq_flags;
+
+	if (wrqu->ap_addr.sa_family != ARPHRD_ETHER)
+		return -EINVAL;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	if (is_valid_ether_addr(wrqu->ap_addr.sa_data)) {
+		memcpy(jstad->bssid, wrqu->ap_addr.sa_data, ETH_ALEN);
+		set_bit(PS3_JUPITER_STA_CONFIG_BSSID_SET, &jstad->config_status);
+	} else {
+		memset(jstad->bssid, 0, ETH_ALEN);
+	}
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
 
 	return 0;
 }
@@ -341,9 +557,146 @@ static int ps3_jupiter_sta_set_ap(struct net_device *netdev,
 static int ps3_jupiter_sta_get_ap(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	wrqu->ap_addr.sa_family = ARPHRD_ETHER;
+	memcpy(wrqu->ap_addr.sa_data, jstad->bssid, ETH_ALEN);
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
 
 	return 0;
+}
+
+/*
+ * ps3_jupiter_sta_set_encode
+ */
+static int ps3_jupiter_sta_set_encode(struct net_device *netdev,
+	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
+{
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	struct iw_point *enc = &wrqu->encoding;
+	__u16 flags = enc->flags & IW_ENCODE_FLAGS;
+	int key_index = enc->flags & IW_ENCODE_INDEX;
+	int key_index_provided;
+	unsigned long irq_flags;
+	int err = 0;
+
+	if (key_index > PS3_JUPITER_STA_WEP_KEYS)
+		return -EINVAL;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	if (key_index) {
+		key_index--;
+		key_index_provided = 1;
+	} else {
+		key_index = jstad->curr_key_index;
+		key_index_provided = 0;
+	}
+
+	if (flags & IW_ENCODE_NOKEY) {
+		if (!(flags & ~IW_ENCODE_NOKEY) && key_index_provided) {
+			jstad->curr_key_index = key_index;
+			goto done;
+		}
+
+		if (flags & IW_ENCODE_DISABLED) {
+			if (key_index_provided) {
+				clear_bit(key_index, &jstad->key_config_status);
+			} else {
+				jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+				jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+				jstad->key_config_status = 0;
+			}
+		}
+
+		if (flags & IW_ENCODE_OPEN)
+			jstad->auth_mode = PS3_JUPITER_STA_AUTH_OPEN;
+		else if (flags & IW_ENCODE_RESTRICTED)
+			jstad->auth_mode = PS3_JUPITER_STA_AUTH_SHARED_KEY;
+	} else {
+		if (enc->length > IW_ENCODING_TOKEN_MAX) {
+			err = -EINVAL;
+			goto done;
+		}
+
+		memcpy(jstad->key[key_index], extra, enc->length);
+		jstad->key_length[key_index] = enc->length;
+		set_bit(key_index, &jstad->key_config_status);
+
+		jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_WEP;
+		jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_WEP;
+	}
+
+done:
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return err;
+}
+
+/*
+ * ps3_jupiter_sta_get_encode
+ */
+static int ps3_jupiter_sta_get_encode(struct net_device *netdev,
+	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
+{
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	struct iw_point *enc = &wrqu->encoding;
+	int key_index = enc->flags & IW_ENCODE_INDEX;
+	int key_index_provided;
+	unsigned long irq_flags;
+	int err = 0;
+
+	if (key_index > PS3_JUPITER_STA_WEP_KEYS)
+		return -EINVAL;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	if (key_index) {
+		key_index--;
+		key_index_provided = 1;
+	} else {
+		key_index = jstad->curr_key_index;
+		key_index_provided = 0;
+	}
+
+	if (jstad->group_cipher_mode == PS3_JUPITER_STA_CIPHER_WEP) {
+		switch (jstad->auth_mode) {
+		case PS3_JUPITER_STA_AUTH_OPEN:
+			enc->flags |= IW_ENCODE_OPEN;
+			break;
+		case PS3_JUPITER_STA_AUTH_SHARED_KEY:
+			enc->flags |= IW_ENCODE_RESTRICTED;
+			break;
+		}
+	} else {
+		enc->flags = IW_ENCODE_DISABLED;
+	}
+
+	if (test_bit(key_index, &jstad->key_config_status)) {
+		if (enc->length < jstad->key_length[key_index]) {
+			err = -EINVAL;
+			goto done;
+		}
+
+		memcpy(extra, jstad->key[key_index], jstad->key_length[key_index]);
+		enc->length = jstad->key_length[key_index];
+	} else {
+		enc->length = 0;
+		enc->flags |= IW_ENCODE_NOKEY;
+	}
+
+	enc->flags |= (key_index + 1);
+
+done:
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return err;
 }
 
 /*
@@ -352,9 +705,60 @@ static int ps3_jupiter_sta_get_ap(struct net_device *netdev,
 static int ps3_jupiter_sta_set_encodeext(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	struct iw_point *enc = &wrqu->encoding;
+	struct iw_encode_ext *enc_ext = (struct iw_encode_ext *) extra;
+	__u16 flags = enc->flags & IW_ENCODE_FLAGS;
+	int key_index = enc->flags & IW_ENCODE_INDEX;
+	unsigned long irq_flags;
+	int err = 0;
 
-	return 0;
+	if (key_index > PS3_JUPITER_STA_WEP_KEYS)
+		return -EINVAL;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	if (key_index)
+		key_index--;
+	else
+		key_index = jstad->curr_key_index;
+
+	if (!enc->length && (enc_ext->ext_flags & IW_ENCODE_EXT_SET_TX_KEY)) {
+		jstad->curr_key_index = key_index;
+	} else if ((enc_ext->alg == IW_ENCODE_ALG_NONE) || (flags & IW_ENCODE_DISABLED)) {
+		jstad->auth_mode = PS3_JUPITER_STA_AUTH_OPEN;
+		jstad->wpa_mode = PS3_JUPITER_STA_WPA_MODE_NONE;
+		jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+		jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+	} else if (enc_ext->alg == IW_ENCODE_ALG_WEP) {
+		if (flags & IW_ENCODE_OPEN)
+			jstad->auth_mode = PS3_JUPITER_STA_AUTH_OPEN;
+		else if (flags & IW_ENCODE_RESTRICTED)
+			jstad->auth_mode = PS3_JUPITER_STA_AUTH_SHARED_KEY;
+
+		if (enc_ext->key_len > IW_ENCODING_TOKEN_MAX) {
+			err = -EINVAL;
+			goto done;
+		}
+
+		memcpy(jstad->key[key_index], enc_ext->key, enc_ext->key_len);
+		jstad->key_length[key_index] = enc_ext->key_len;
+		set_bit(key_index, &jstad->key_config_status);
+	} else if (enc_ext->alg == IW_ENCODE_ALG_PMK) {
+		if (enc_ext->key_len != PS3_JUPITER_STA_WPA_PSK_LENGTH) {
+			err = -EINVAL;
+			goto done;
+		}
+
+		memcpy(jstad->psk, enc_ext->key, enc_ext->key_len);
+		set_bit(PS3_JUPITER_STA_CONFIG_WPA_PSK_SET, &jstad->config_status);
+	}
+
+done:
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return err;
 }
 
 /*
@@ -363,42 +767,61 @@ static int ps3_jupiter_sta_set_encodeext(struct net_device *netdev,
 static int ps3_jupiter_sta_get_encodeext(struct net_device *netdev,
 	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	struct iw_point *enc = &wrqu->encoding;
+	struct iw_encode_ext *enc_ext = (struct iw_encode_ext *) extra;
+	int key_index = enc->flags & IW_ENCODE_INDEX;
+	unsigned long irq_flags;
+	int err = 0;
 
-	return 0;
-}
+	if ((enc->length - sizeof(struct iw_encode_ext)) < 0)
+		return -EINVAL;
 
-/*
- * ps3_jupiter_sta_set_mode
- */
-static int ps3_jupiter_sta_set_mode(struct net_device *netdev,
-	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
-{
-	return (wrqu->mode == IW_MODE_INFRA) ? 0 : -EOPNOTSUPP;
-}
+	if (key_index > PS3_JUPITER_STA_WEP_KEYS)
+		return -EINVAL;
 
-/*
- * ps3_jupiter_sta_get_mode
- */
-static int ps3_jupiter_sta_get_mode(struct net_device *netdev,
-	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
-{
-	wrqu->mode = IW_MODE_INFRA;
+	spin_lock_irqsave(&jstad->lock, irq_flags);
 
-	return 0;
-}
+	if (key_index)
+		key_index--;
+	else
+		key_index = jstad->curr_key_index;
 
-/*
- * ps3_jupiter_sta_get_nick
- */
-static int ps3_jupiter_sta_get_nick(struct net_device *netdev,
-	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
-{
-	strcpy(extra, "ps3_jupiter_sta");
-	wrqu->data.length = strlen(extra);
-	wrqu->data.flags = 1;
+	memset(enc_ext, 0, sizeof(*enc_ext));
 
-	return 0;
+	switch (jstad->group_cipher_mode) {
+	case PS3_JUPITER_STA_CIPHER_WEP:
+		enc_ext->alg = IW_ENCODE_ALG_WEP;
+		enc->flags |= IW_ENCODE_ENABLED;
+	break;
+	case PS3_JUPITER_STA_CIPHER_TKIP:
+		enc_ext->alg = IW_ENCODE_ALG_TKIP;
+		enc->flags |= IW_ENCODE_ENABLED;
+	break;
+	case PS3_JUPITER_STA_CIPHER_AES:
+		enc_ext->alg = IW_ENCODE_ALG_CCMP;
+		enc->flags |= IW_ENCODE_ENABLED;
+	break;
+	default:
+		enc_ext->alg = IW_ENCODE_ALG_NONE;
+		enc->flags |= IW_ENCODE_NOKEY;
+	}
+
+	if (!(enc->flags & IW_ENCODE_NOKEY)) {
+		if ((enc->length - sizeof(struct iw_encode_ext)) < jstad->key_length[key_index]) {
+			err = -E2BIG;
+			goto done;
+		}
+
+		if (test_bit(key_index, &jstad->key_config_status))
+			memcpy(enc_ext->key, jstad->key[key_index], jstad->key_length[key_index]);
+	}
+
+done:
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return err;
 }
 
 /*
@@ -428,9 +851,13 @@ static int ps3_jupiter_sta_open(struct net_device *netdev)
  */
 static int ps3_jupiter_sta_stop(struct net_device *netdev)
 {
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+
 	/*XXX: implement */
 
 	netif_stop_queue(netdev);
+
+	ps3_jupiter_sta_reset_state(jstad);
 
 	return 0;
 }
@@ -520,22 +947,22 @@ static u32 ps3_jupiter_sta_get_rx_csum(struct net_device *netdev)
 static const iw_handler ps3_jupiter_sta_iw_handler[] =
 {
 	IW_HANDLER(SIOCGIWNAME,		ps3_jupiter_sta_get_name),
+	IW_HANDLER(SIOCGIWNICKN,	ps3_jupiter_sta_get_nick),
 	IW_HANDLER(SIOCGIWRANGE,	ps3_jupiter_sta_get_range),
+	IW_HANDLER(SIOCSIWMODE,		ps3_jupiter_sta_set_mode),
+	IW_HANDLER(SIOCGIWMODE,		ps3_jupiter_sta_get_mode),
 	IW_HANDLER(SIOCSIWSCAN,		ps3_jupiter_sta_set_scan),
 	IW_HANDLER(SIOCGIWSCAN,		ps3_jupiter_sta_get_scan),
 	IW_HANDLER(SIOCSIWAUTH,		ps3_jupiter_sta_set_auth),
 	IW_HANDLER(SIOCGIWAUTH,		ps3_jupiter_sta_get_auth),
 	IW_HANDLER(SIOCSIWESSID,	ps3_jupiter_sta_set_essid),
 	IW_HANDLER(SIOCGIWESSID,	ps3_jupiter_sta_get_essid),
-	IW_HANDLER(SIOCSIWENCODE,	ps3_jupiter_sta_set_encode),
-	IW_HANDLER(SIOCGIWENCODE,	ps3_jupiter_sta_get_encode),
 	IW_HANDLER(SIOCSIWAP,		ps3_jupiter_sta_set_ap),
 	IW_HANDLER(SIOCGIWAP,		ps3_jupiter_sta_get_ap),
+	IW_HANDLER(SIOCSIWENCODE,	ps3_jupiter_sta_set_encode),
+	IW_HANDLER(SIOCGIWENCODE,	ps3_jupiter_sta_get_encode),
 	IW_HANDLER(SIOCSIWENCODEEXT,	ps3_jupiter_sta_set_encodeext),
 	IW_HANDLER(SIOCGIWENCODEEXT,	ps3_jupiter_sta_get_encodeext),
-	IW_HANDLER(SIOCSIWMODE,		ps3_jupiter_sta_set_mode),
-	IW_HANDLER(SIOCGIWMODE,		ps3_jupiter_sta_get_mode),
-	IW_HANDLER(SIOCGIWNICKN,	ps3_jupiter_sta_get_nick),
 };
 
 static const struct iw_handler_def ps3_jupiter_sta_iw_handler_def = {
@@ -667,7 +1094,7 @@ static int ps3_jupiter_sta_start_scan(struct ps3_jupiter_sta_dev *jstad,
 done:
 
 	if (err)
-		jstad->scan_status = PS3_JUPITER_STA_SCAN_FAILED;
+		jstad->scan_status = PS3_JUPITER_STA_SCAN_INVALID;
 
 	if (buf)
 		kfree(buf);
@@ -687,8 +1114,10 @@ static int ps3_jupiter_sta_get_scan_results(struct ps3_jupiter_sta_dev *jstad)
 
 	if (!jstad->scan_results) {
 		jstad->scan_results = kmalloc(PS3_EURUS_SCAN_RESULTS_MAXSIZE, GFP_KERNEL);
-		if (!jstad->scan_results)
-			return -ENOMEM;
+		if (!jstad->scan_results) {
+			err = -ENOMEM;
+			goto done;
+		}
 	}
 
 	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_GET_SCAN_RESULTS,
@@ -702,14 +1131,14 @@ static int ps3_jupiter_sta_get_scan_results(struct ps3_jupiter_sta_dev *jstad)
 		goto done;
 	}
 
-	jstad->scan_status = PS3_JUPITER_STA_SCAN_SUCCESS;
+	jstad->scan_status = PS3_JUPITER_STA_SCAN_OK;
 
 	err = 0;
 
 done:
 
 	if (err)
-		jstad->scan_status = PS3_JUPITER_STA_SCAN_FAILED;
+		jstad->scan_status = PS3_JUPITER_STA_SCAN_INVALID;
 
 	return err;
 }
@@ -828,6 +1257,26 @@ static char *ps3_jupiter_sta_translate_scan_result(struct ps3_jupiter_sta_dev *j
 }
 
 /*
+ * ps3_jupiter_sta_event_scan_completed
+ */
+static void ps3_jupiter_sta_event_scan_completed(struct ps3_jupiter_sta_dev *jstad)
+{
+	union iwreq_data iwrd;
+	int err;
+
+	err = ps3_jupiter_sta_get_scan_results(jstad);
+	if (err)
+		return;
+
+	mutex_lock(&jstad->scan_lock);
+
+	memset(&iwrd, 0, sizeof(iwrd));
+	wireless_send_event(jstad->netdev, SIOCGIWSCAN, &iwrd, NULL);
+
+	mutex_unlock(&jstad->scan_lock);
+}
+
+/*
  * ps3_jupiter_sta_event_handler
  */
 static void ps3_jupiter_sta_event_handler(struct ps3_jupiter_event_listener *listener,
@@ -835,24 +1284,15 @@ static void ps3_jupiter_sta_event_handler(struct ps3_jupiter_event_listener *lis
 {
 	struct ps3_jupiter_sta_dev *jstad = (struct ps3_jupiter_sta_dev *) listener->data;
 	struct usb_device *udev = jstad->udev;
-	int err;
 
 	dev_dbg(&udev->dev, "got event (0x%08x 0x%08x 0x%08x 0x%08x 0x%08x)\n",
 	    event->hdr.type, event->hdr.id, event->hdr.unknown1, event->hdr.payload_length, event->hdr.unknown2);
 
 	if (event->hdr.type == PS3_EURUS_EVENT_TYPE_0x80) {
-		if (event->hdr.id == PS3_EURUS_EVENT_SCAN_COMPLETED) {
-			/* get scan results */
-
-			err = ps3_jupiter_sta_get_scan_results(jstad);
-			if (!err) {
-				union iwreq_data data;
-
-				mutex_lock(&jstad->scan_lock);
-				memset(&data, 0, sizeof(data));
-				wireless_send_event(jstad->netdev, SIOCGIWSCAN, &data, NULL);
-				mutex_unlock(&jstad->scan_lock);
-			}
+		switch (event->hdr.id) {
+		case PS3_EURUS_EVENT_SCAN_COMPLETED:
+			ps3_jupiter_sta_event_scan_completed(jstad);
+		break;
 		}
 	}
 }
@@ -976,6 +1416,30 @@ done:
 }
 
 /*
+ * ps3_jupiter_sta_reset_state
+ */
+static void ps3_jupiter_sta_reset_state(struct ps3_jupiter_sta_dev *jstad)
+{
+	jstad->scan_status = PS3_JUPITER_STA_SCAN_INVALID;
+
+	jstad->config_status = 0;
+
+	jstad->auth_mode = PS3_JUPITER_STA_AUTH_OPEN;
+
+	jstad->wpa_mode = PS3_JUPITER_STA_WPA_MODE_NONE;
+	jstad->group_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+	jstad->pairwise_cipher_mode = PS3_JUPITER_STA_CIPHER_NONE;
+
+	memset(jstad->essid, 0, sizeof(jstad->essid));
+	jstad->essid_length = 0;
+
+	memset(jstad->bssid, 0, sizeof(jstad->bssid));
+
+	jstad->key_config_status = 0;
+	jstad->curr_key_index = 0;
+}
+
+/*
  * ps3_jupiter_sta_probe
  */
 static int ps3_jupiter_sta_probe(struct usb_interface *interface,
@@ -996,6 +1460,8 @@ static int ps3_jupiter_sta_probe(struct usb_interface *interface,
 	jstad->udev = usb_get_dev(udev);
 	usb_set_intfdata(interface, jstad);
 
+	spin_lock_init(&jstad->lock);
+
 	jstad->event_listener.function = ps3_jupiter_sta_event_handler;
 	jstad->event_listener.data = (unsigned long) jstad;
 
@@ -1006,7 +1472,6 @@ static int ps3_jupiter_sta_probe(struct usb_interface *interface,
 	}
 
 	mutex_init(&jstad->scan_lock);
-	jstad->scan_status = PS3_JUPITER_STA_SCAN_FAILED;
 
 	err = ps3_jupiter_sta_get_channel_info(jstad);
 	if (err) {
@@ -1019,6 +1484,8 @@ static int ps3_jupiter_sta_probe(struct usb_interface *interface,
 		dev_err(&udev->dev, "could not setup network device (%d)\n", err);
 		goto fail;
 	}
+
+	ps3_jupiter_sta_reset_state(jstad);
 
 	return 0;
 
