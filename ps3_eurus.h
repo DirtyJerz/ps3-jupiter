@@ -22,8 +22,6 @@
 #ifndef _PS3_EURUS_H
 #define _PS3_EURUS_H
 
-#include <linux/types.h>
-
 enum ps3_eurus_cmd_id {
 	PS3_EURUS_CMD_GET_AP_SSID		= 0x0003,
 	PS3_EURUS_CMD_SET_AP_SSID		= 0x0005,
