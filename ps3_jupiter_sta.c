@@ -56,6 +56,12 @@ enum ps3_jupiter_sta_config_bits {
 	PS3_JUPITER_STA_CONFIG_WPA_PSK_SET
 };
 
+enum ps3_jupiter_sta_opmode {
+	PS3_JUPITER_STA_OPMODE_11B = 0,
+	PS3_JUPITER_STA_OPMODE_11G,
+	PS3_JUPITER_STA_OPMODE_11BG
+};
+
 enum ps3_jupiter_sta_auth_mode {
 	PS3_JUPITER_STA_AUTH_OPEN = 0,
 	PS3_JUPITER_STA_AUTH_SHARED_KEY
@@ -94,6 +100,8 @@ struct ps3_jupiter_sta_dev {
 	struct mutex scan_lock;
 
 	unsigned long config_status;
+
+	enum ps3_jupiter_sta_opmode opmode;
 
 	enum ps3_jupiter_sta_auth_mode auth_mode;
 
@@ -824,6 +832,57 @@ done:
 	return err;
 }
 
+#ifdef CONFIG_WEXT_PRIV
+/*
+ * ps3_jupiter_sta_set_opmode
+ */
+static int ps3_jupiter_sta_set_opmode(struct net_device *netdev,
+	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
+{
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	int opmode = *(int *) extra;
+	unsigned long irq_flags;
+	int err = 0;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	switch (opmode) {
+	case PS3_JUPITER_STA_OPMODE_11B:
+	case PS3_JUPITER_STA_OPMODE_11G:
+	case PS3_JUPITER_STA_OPMODE_11BG:
+		jstad->opmode = opmode;
+	break;
+	default:
+		err = -EINVAL;
+	}
+
+done:
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return err;
+}
+
+/*
+ * ps3_jupiter_sta_get_opmode
+ */
+static int ps3_jupiter_sta_get_opmode(struct net_device *netdev,
+	struct iw_request_info *info, union iwreq_data *wrqu, char *extra)
+{
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	memcpy(extra, &jstad->opmode, sizeof(jstad->opmode));
+	wrqu->data.length = sizeof(jstad->opmode);
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	return 0;
+}
+#endif
+
 /*
  * ps3_jupiter_sta_get_wireless_stats
  */
@@ -965,9 +1024,40 @@ static const iw_handler ps3_jupiter_sta_iw_handler[] =
 	IW_HANDLER(SIOCGIWENCODEEXT,	ps3_jupiter_sta_get_encodeext),
 };
 
+#ifdef CONFIG_WEXT_PRIV
+static const iw_handler ps3_jupiter_sta_iw_priv_handler[] = {
+	ps3_jupiter_sta_set_opmode,
+	ps3_jupiter_sta_get_opmode,
+};
+
+enum {
+	PS3_JUPITER_STA_IW_PRIV_SET_MODE = SIOCIWFIRSTPRIV,
+	PS3_JUPITER_STA_IW_PRIV_GET_MODE,
+};
+
+static struct iw_priv_args ps3_jupiter_sta_iw_priv_args[] = {
+	{
+		.cmd = PS3_JUPITER_STA_IW_PRIV_SET_MODE,
+		.set_args = IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+		.name = "set_opmode"
+	},
+	{
+		.cmd = PS3_JUPITER_STA_IW_PRIV_GET_MODE,
+		.get_args = IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+		.name = "get_opmode"
+	},
+};
+#endif
+
 static const struct iw_handler_def ps3_jupiter_sta_iw_handler_def = {
-	.num_standard		= ARRAY_SIZE(ps3_jupiter_sta_iw_handler),
 	.standard		= ps3_jupiter_sta_iw_handler,
+	.num_standard		= ARRAY_SIZE(ps3_jupiter_sta_iw_handler),
+#ifdef CONFIG_WEXT_PRIV
+	.private		= ps3_jupiter_sta_iw_priv_handler,
+	.num_private		= ARRAY_SIZE(ps3_jupiter_sta_iw_priv_handler),
+	.private_args		= ps3_jupiter_sta_iw_priv_args,
+	.num_private_args	= ARRAY_SIZE(ps3_jupiter_sta_iw_priv_args),
+#endif
 	.get_wireless_stats	= ps3_jupiter_sta_get_wireless_stats,
 };
 
@@ -1423,6 +1513,8 @@ static void ps3_jupiter_sta_reset_state(struct ps3_jupiter_sta_dev *jstad)
 	jstad->scan_status = PS3_JUPITER_STA_SCAN_INVALID;
 
 	jstad->config_status = 0;
+
+	jstad->opmode = PS3_JUPITER_STA_OPMODE_11G;
 
 	jstad->auth_mode = PS3_JUPITER_STA_AUTH_OPEN;
 
