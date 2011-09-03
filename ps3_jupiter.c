@@ -290,7 +290,6 @@ static void ps3_jupiter_irq_urb_complete(struct urb *urb)
 		default:
 			dev_err(&udev->dev, "got unknown IRQ packet type (%d)\n",
 			    pkt_hdr->type);
-		break;
 		}
 	break;
 	case -EINPROGRESS:
@@ -302,7 +301,6 @@ static void ps3_jupiter_irq_urb_complete(struct urb *urb)
 	return;
 	default:
 		dev_err(&udev->dev, "IRQ URB failed (%d)\n", urb->status);
-	break;
 	}
 
 	err = usb_submit_urb(jd->irq_urb, GFP_ATOMIC);
@@ -334,7 +332,6 @@ static void ps3_jupiter_cmd_urb_complete(struct urb *urb)
 		dev_err(&udev->dev, "command URB failed (%d)\n", urb->status);
 		jd->cmd_err = urb->status;
 		complete(&jd->cmd_done_comp);
-	break;
 	}
 }
 
@@ -853,7 +850,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	eurus_cmd_mcast_addr_filter = (struct ps3_eurus_cmd_mcast_addr_filter *) buf;
 	memset(eurus_cmd_mcast_addr_filter, 0, sizeof(*eurus_cmd_mcast_addr_filter));
 	eurus_cmd_mcast_addr_filter->word[PS3_EURUS_MCAST_ADDR_HASH2POS(h)] |=
-	    PS3_EURUS_MCAST_ADDR_HASH2VAL(h);
+	    cpu_to_le32(PS3_EURUS_MCAST_ADDR_HASH2VAL(h));
 
 	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_SET_MCAST_ADDR_FILTER,
 	    eurus_cmd_mcast_addr_filter, sizeof(*eurus_cmd_mcast_addr_filter), &status, NULL, NULL);
