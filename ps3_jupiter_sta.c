@@ -1947,12 +1947,22 @@ static void ps3_jupiter_sta_event_connected(struct ps3_jupiter_sta_dev *jstad, u
  */
 static void ps3_jupiter_sta_event_disconnected(struct ps3_jupiter_sta_dev *jstad)
 {
+	int assoc_lock = 0;
+
+	if (mutex_trylock(&jstad->assoc_lock))
+		assoc_lock = 1;
+
+	ps3_jupiter_sta_disassoc(jstad);
+
 	if (jstad->assoc_status == PS3_JUPITER_STA_ASSOC_OK)
-		ps3_jupiter_sta_disassoc(jstad);
+		ps3_jupiter_sta_send_iw_ap_event(jstad, NULL);
 
 	jstad->assoc_status = PS3_JUPITER_STA_ASSOC_INVALID;
 
 	netif_carrier_off(jstad->netdev);
+
+	if (assoc_lock)
+		mutex_unlock(&jstad->assoc_lock);
 }
 
 /*
