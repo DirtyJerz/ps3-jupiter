@@ -24,6 +24,7 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/usb.h>
+#include <linux/interrupt.h>
 
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
@@ -36,6 +37,7 @@
 
 #define PS3_JUPITER_STA_CMD_BUFSIZE		2048
 
+#define PS3_JUPITER_STA_IFACE			0x4
 #define PS3_JUPITER_STA_EP			0x6
 
 #define PS3_JUPITER_STA_WEP_KEYS		4
@@ -154,6 +156,9 @@ struct ps3_jupiter_sta_dev {
 	struct completion assoc_done_comp;
 
 	struct urb *rx_urb[PS3_JUPITER_STA_RX_URBS];
+
+	struct sk_buff_head rx_skb_queue;
+	struct tasklet_struct rx_tasklet;
 };
 
 static const int ps3_jupiter_sta_channel_freq[] = {
@@ -209,6 +214,8 @@ static int ps3_jupiter_sta_prepare_rx_urb(struct ps3_jupiter_sta_dev *jstad,
 static int ps3_jupiter_sta_alloc_rx_urbs(struct ps3_jupiter_sta_dev *jstad);
 
 static void ps3_jupiter_sta_free_rx_urbs(struct ps3_jupiter_sta_dev *jstad);
+
+static void ps3_jupiter_sta_purge_rx_skb_queue(struct ps3_jupiter_sta_dev *jstad);
 
 /*
  * ps3_jupiter_sta_send_iw_ap_event
@@ -983,6 +990,10 @@ static int ps3_jupiter_sta_stop(struct net_device *netdev)
 
 	ps3_jupiter_sta_free_rx_urbs(jstad);
 
+	tasklet_kill(&jstad->rx_tasklet);
+
+	ps3_jupiter_sta_purge_rx_skb_queue(jstad);
+
 	ps3_jupiter_sta_free_scan_results(jstad);
 
 	ps3_jupiter_sta_reset_state(jstad);
@@ -1160,18 +1171,31 @@ static const struct ethtool_ops ps3_jupiter_sta_ethtool_ops = {
  */
 static void ps3_jupiter_sta_rx_urb_complete(struct urb *urb)
 {
-	struct ps3_jupiter_sta_dev *jstad = usb_get_intfdata(usb_ifnum_to_if(urb->dev, 0));
+	struct ps3_jupiter_sta_dev *jstad = usb_get_intfdata(usb_ifnum_to_if(urb->dev, PS3_JUPITER_STA_IFACE));
 	struct usb_device *udev = jstad->udev;
+	struct sk_buff *skb = urb->context;
 	int err;
 
 	dev_dbg(&udev->dev, "Rx URB completed (%d)\n", urb->status);
 
 	switch (urb->status) {
 	case 0:
-		dev_dbg(&udev->dev, "Rx URB length (%d)\n", urb->actual_length);
-
-		if (urb->actual_length == 0x10)
+		if (urb->actual_length == 0x10) {
+			dev_info(&udev->dev, "got empty Rx URB\n");
 			break;
+		}
+
+		skb_put(skb, urb->actual_length);
+
+		err = ps3_jupiter_sta_prepare_rx_urb(jstad, urb);
+		if (err) {
+			dev_err(&udev->dev, "could not prepare Rx URB (%d)\n", err);
+			break;
+		}
+
+		skb_queue_tail(&jstad->rx_skb_queue, skb);
+
+		tasklet_schedule(&jstad->rx_tasklet);
 	break;
 	case -ECONNRESET:
 	case -ENOENT:
@@ -1182,6 +1206,10 @@ static void ps3_jupiter_sta_rx_urb_complete(struct urb *urb)
 	}
 
 	/* resubmit */
+
+	skb = urb->context;
+	skb_reset_tail_pointer(skb);
+	skb_trim(skb, 0);
 
 	err = usb_submit_urb(urb, GFP_ATOMIC);
 	if (err)
@@ -2260,6 +2288,36 @@ static void ps3_jupiter_sta_free_rx_urbs(struct ps3_jupiter_sta_dev *jstad)
 }
 
 /*
+ * ps3_jupiter_sta_rx_tasklet
+ */
+static void ps3_jupiter_sta_rx_tasklet(unsigned long data)
+{
+	struct ps3_jupiter_sta_dev *jstad = (struct ps3_jupiter_sta_dev *) data;
+	struct net_device *netdev = jstad->netdev;
+	struct sk_buff *skb;
+
+	while ((skb = skb_dequeue(&jstad->rx_skb_queue))) {
+		skb->protocol = eth_type_trans(skb, netdev);
+
+		netdev->stats.rx_packets++;
+		netdev->stats.rx_bytes += skb->len;
+
+		netif_receive_skb(skb);
+	}
+}
+
+/*
+ * ps3_jupiter_sta_purge_rx_skb_queue
+ */
+static void ps3_jupiter_sta_purge_rx_skb_queue(struct ps3_jupiter_sta_dev *jstad)
+{
+	struct sk_buff *skb;
+
+	while ((skb = __skb_dequeue(&jstad->rx_skb_queue)))
+		dev_kfree_skb_any((void *) skb);
+}
+
+/*
  * ps3_jupiter_sta_probe
  */
 static int ps3_jupiter_sta_probe(struct usb_interface *interface,
@@ -2308,6 +2366,10 @@ static int ps3_jupiter_sta_probe(struct usb_interface *interface,
 		goto fail;
 	}
 
+	skb_queue_head_init(&jstad->rx_skb_queue);
+
+	tasklet_init(&jstad->rx_tasklet, ps3_jupiter_sta_rx_tasklet, (unsigned long) jstad);
+
 	err = ps3_jupiter_sta_setup_netdev(jstad);
 	if (err) {
 		dev_err(&udev->dev, "could not setup network device (%d)\n", err);
@@ -2347,6 +2409,10 @@ static void ps3_jupiter_sta_disconnect(struct usb_interface *interface)
 	ps3_jupiter_sta_destroy_assoc_worker(jstad);
 
 	ps3_jupiter_sta_free_rx_urbs(jstad);
+
+	tasklet_kill(&jstad->rx_tasklet);
+
+	ps3_jupiter_sta_purge_rx_skb_queue(jstad);
 
 	ps3_jupiter_sta_free_scan_results(jstad);
 
