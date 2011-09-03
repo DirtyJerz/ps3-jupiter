@@ -47,6 +47,8 @@
 #define PS3_JUPITER_STA_RX_URBS			4
 #define PS3_JUPITER_STA_RX_BUFSIZE		0x620
 
+#define PS3_JUPITER_STA_TX_URBS			4
+
 enum ps3_jupiter_sta_scan_status {
 	PS3_JUPITER_STA_SCAN_INVALID = 0,
 	PS3_JUPITER_STA_SCAN_IN_PROGRESS,
@@ -155,10 +157,12 @@ struct ps3_jupiter_sta_dev {
 	enum ps3_jupiter_sta_assoc_status assoc_status;
 	struct completion assoc_done_comp;
 
-	struct urb *rx_urb[PS3_JUPITER_STA_RX_URBS];
-
+	struct usb_anchor rx_urb_anchor;
 	struct sk_buff_head rx_skb_queue;
 	struct tasklet_struct rx_tasklet;
+
+	struct usb_anchor tx_urb_anchor;
+	atomic_t tx_submitted_urbs;
 };
 
 static const int ps3_jupiter_sta_channel_freq[] = {
@@ -216,6 +220,10 @@ static int ps3_jupiter_sta_alloc_rx_urbs(struct ps3_jupiter_sta_dev *jstad);
 static void ps3_jupiter_sta_free_rx_urbs(struct ps3_jupiter_sta_dev *jstad);
 
 static void ps3_jupiter_sta_purge_rx_skb_queue(struct ps3_jupiter_sta_dev *jstad);
+
+static void ps3_jupiter_sta_tx_urb_complete(struct urb *urb);
+
+static void ps3_jupiter_sta_free_tx_urbs(struct ps3_jupiter_sta_dev *jstad);
 
 /*
  * ps3_jupiter_sta_send_iw_ap_event
@@ -964,10 +972,11 @@ static int ps3_jupiter_sta_open(struct net_device *netdev)
 	int err;
 
 	err = ps3_jupiter_sta_alloc_rx_urbs(jstad);
-	if (err) {
-		ps3_jupiter_sta_free_rx_urbs(jstad);
+	if (err)
 		return err;
-	}
+
+	init_usb_anchor(&jstad->tx_urb_anchor);
+	atomic_set(&jstad->tx_submitted_urbs, 0);
 
 	ps3_jupiter_sta_start_assoc(jstad);
 
@@ -989,10 +998,10 @@ static int ps3_jupiter_sta_stop(struct net_device *netdev)
 		ps3_jupiter_sta_disassoc(jstad);
 
 	ps3_jupiter_sta_free_rx_urbs(jstad);
-
 	tasklet_kill(&jstad->rx_tasklet);
-
 	ps3_jupiter_sta_purge_rx_skb_queue(jstad);
+
+	ps3_jupiter_sta_free_tx_urbs(jstad);
 
 	ps3_jupiter_sta_free_scan_results(jstad);
 
@@ -1008,9 +1017,41 @@ static int ps3_jupiter_sta_stop(struct net_device *netdev)
  */
 static int ps3_jupiter_sta_start_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
-	/*XXX: implement */
+	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+	struct usb_device *udev = jstad->udev;
+	struct urb *urb;
+	unsigned long irq_flags;
+	int err;
 
-	return 0;
+	spin_lock_irqsave(&jstad->lock, irq_flags);
+
+	if (atomic_read(&jstad->tx_submitted_urbs) >= PS3_JUPITER_STA_TX_URBS) {
+		spin_unlock_irqrestore(&jstad->lock, irq_flags);
+		return -EBUSY;
+	}
+
+	atomic_inc(&jstad->tx_submitted_urbs);
+
+	spin_unlock_irqrestore(&jstad->lock, irq_flags);
+
+	urb = usb_alloc_urb(0, GFP_ATOMIC);
+	if (!urb)
+		return -ENOMEM;
+
+	usb_fill_bulk_urb(urb, udev, usb_sndbulkpipe(udev, PS3_JUPITER_STA_EP),
+	    skb->data, skb->len, ps3_jupiter_sta_tx_urb_complete, skb);
+
+	usb_anchor_urb(urb, &jstad->tx_urb_anchor);
+
+	err = usb_submit_urb(urb, GFP_ATOMIC);
+	if (err) {
+		usb_unanchor_urb(urb);
+		atomic_dec(&jstad->tx_submitted_urbs);
+	}
+
+	usb_free_urb(urb);
+
+	return err;
 }
 
 /*
@@ -1180,6 +1221,8 @@ static void ps3_jupiter_sta_rx_urb_complete(struct urb *urb)
 
 	switch (urb->status) {
 	case 0:
+		/* success */
+
 		if (urb->actual_length == 0x10) {
 			dev_info(&udev->dev, "got empty Rx URB\n");
 			break;
@@ -1200,7 +1243,9 @@ static void ps3_jupiter_sta_rx_urb_complete(struct urb *urb)
 	case -ECONNRESET:
 	case -ENOENT:
 	case -ESHUTDOWN:
-	return;
+	case -ENODEV:
+		goto free_skb;
+	break;
 	default:
 		dev_err(&udev->dev, "Rx URB failed (%d)\n", urb->status);
 	}
@@ -1211,9 +1256,53 @@ static void ps3_jupiter_sta_rx_urb_complete(struct urb *urb)
 	skb_reset_tail_pointer(skb);
 	skb_trim(skb, 0);
 
+	usb_anchor_urb(urb, &jstad->rx_urb_anchor);
+
 	err = usb_submit_urb(urb, GFP_ATOMIC);
-	if (err)
+	if (err) {
 		dev_err(&udev->dev, "could not submit Rx URB (%d)\n", err);
+		usb_unanchor_urb(urb);
+		goto free_skb;
+	}
+
+	return;
+
+free_skb:
+
+	dev_kfree_skb_irq(skb);
+}
+
+/*
+ * ps3_jupiter_sta_tx_urb_complete
+ */
+static void ps3_jupiter_sta_tx_urb_complete(struct urb *urb)
+{
+	struct ps3_jupiter_sta_dev *jstad = usb_get_intfdata(usb_ifnum_to_if(urb->dev, PS3_JUPITER_STA_IFACE));
+	struct usb_device *udev = jstad->udev;
+	struct net_device *netdev = jstad->netdev;
+	struct sk_buff *skb = urb->context;
+
+	dev_dbg(&udev->dev, "Tx URB completed (%d)\n", urb->status);
+
+	switch (urb->status) {
+	case 0:
+		/* success */
+	
+		netdev->stats.tx_packets++;
+		netdev->stats.tx_bytes += skb->len;
+
+		atomic_dec(&jstad->tx_submitted_urbs);
+	break;
+	case -ECONNRESET:
+	case -ENOENT:
+	case -ESHUTDOWN:
+	case -ENODEV:
+	break;
+	default:
+		dev_err(&udev->dev, "Tx URB failed (%d)\n", urb->status);
+	}
+
+	dev_kfree_skb_irq(skb);
 }
 
 /*
@@ -2249,24 +2338,46 @@ static int ps3_jupiter_sta_prepare_rx_urb(struct ps3_jupiter_sta_dev *jstad,
  */
 static int ps3_jupiter_sta_alloc_rx_urbs(struct ps3_jupiter_sta_dev *jstad)
 {
+	struct urb *urb;
 	unsigned int i;
 	int err;
 
+	init_usb_anchor(&jstad->rx_urb_anchor);
+
 	for (i = 0; i < PS3_JUPITER_STA_RX_URBS; i++) {
-		jstad->rx_urb[i] = usb_alloc_urb(0, GFP_KERNEL);
-		if (!jstad->rx_urb[i])
-			return -ENOMEM;
+		urb = usb_alloc_urb(0, GFP_KERNEL);
+		if (!urb) {
+			err = -ENOMEM;
+			goto done;
+		}
 
-		err = ps3_jupiter_sta_prepare_rx_urb(jstad, jstad->rx_urb[i]);
-		if (err)
-			return err;
+		err = ps3_jupiter_sta_prepare_rx_urb(jstad, urb);
+		if (err) {
+			usb_free_urb(urb);
+			goto done;
+		}
 
-		err = usb_submit_urb(jstad->rx_urb[i], GFP_KERNEL);
-		if (err)
-			return err;
+		usb_anchor_urb(urb, &jstad->rx_urb_anchor);
+
+		err = usb_submit_urb(urb, GFP_KERNEL);
+		if (err) {
+			usb_unanchor_urb(urb);
+			dev_kfree_skb_any((void *) urb->context);
+			usb_free_urb(urb);
+			goto done;
+		}
+
+		usb_free_urb(urb);
 	}
 
-	return 0;
+	err = 0;
+
+done:
+
+	if (err)
+		usb_kill_anchored_urbs(&jstad->rx_urb_anchor);
+
+	return err;
 }
 
 /*
@@ -2274,17 +2385,7 @@ static int ps3_jupiter_sta_alloc_rx_urbs(struct ps3_jupiter_sta_dev *jstad)
  */
 static void ps3_jupiter_sta_free_rx_urbs(struct ps3_jupiter_sta_dev *jstad)
 {
-	unsigned int i;
-
-	for (i = 0; i < PS3_JUPITER_STA_RX_URBS; i++) {
-		if (jstad->rx_urb[i]) {
-			usb_kill_urb(jstad->rx_urb[i]);
-			if (jstad->rx_urb[i]->context)
-				dev_kfree_skb_any((void *) jstad->rx_urb[i]->context);
-			usb_free_urb(jstad->rx_urb[i]);
-			jstad->rx_urb[i] = NULL;
-		}
-	}
+	usb_poison_anchored_urbs(&jstad->rx_urb_anchor);
 }
 
 /*
@@ -2315,6 +2416,18 @@ static void ps3_jupiter_sta_purge_rx_skb_queue(struct ps3_jupiter_sta_dev *jstad
 
 	while ((skb = __skb_dequeue(&jstad->rx_skb_queue)))
 		dev_kfree_skb_any((void *) skb);
+}
+
+/*
+ * ps3_jupiter_sta_free_tx_urbs
+ */
+static void ps3_jupiter_sta_free_tx_urbs(struct ps3_jupiter_sta_dev *jstad)
+{
+	usb_wait_anchor_empty_timeout(&jstad->tx_urb_anchor, msecs_to_jiffies(100));
+
+	usb_kill_anchored_urbs(&jstad->tx_urb_anchor);
+
+	usb_poison_anchored_urbs(&jstad->tx_urb_anchor);
 }
 
 /*
@@ -2409,10 +2522,10 @@ static void ps3_jupiter_sta_disconnect(struct usb_interface *interface)
 	ps3_jupiter_sta_destroy_assoc_worker(jstad);
 
 	ps3_jupiter_sta_free_rx_urbs(jstad);
-
 	tasklet_kill(&jstad->rx_tasklet);
-
 	ps3_jupiter_sta_purge_rx_skb_queue(jstad);
+
+	ps3_jupiter_sta_free_tx_urbs(jstad);
 
 	ps3_jupiter_sta_free_scan_results(jstad);
 
