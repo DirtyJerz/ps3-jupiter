@@ -586,7 +586,7 @@ EXPORT_SYMBOL_GPL(ps3_jupiter_exec_eurus_cmd);
  */
 static int ps3_jupiter_create_event_worker(struct ps3_jupiter_dev *jd)
 {
-	jd->event_queue = create_singlethread_workqueue("ps3_eurus_event");
+	jd->event_queue = create_singlethread_workqueue("ps3_jupiter_event");
 	if (!jd->event_queue)
 		return -ENOMEM;
 

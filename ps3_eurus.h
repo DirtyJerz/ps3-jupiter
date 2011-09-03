@@ -76,12 +76,15 @@ enum ps3_eurus_event_type {
 	PS3_EURUS_EVENT_TYPE_0x40		= 0x00000040,
 	PS3_EURUS_EVENT_TYPE_0x80		= 0x00000080,
 	PS3_EURUS_EVENT_TYPE_0x400		= 0x00000400,
+	PS3_EURUS_EVENT_TYPE_0x80000000		= 0x80000000
 };
 
 enum ps3_eurus_event_id {
-	PS3_EURUS_EVENT_DEVICE_READY		= 0x00000001,
+	/* event type 0x00000040 */
 
-	/* event type 0x80 */
+	PS3_EURUS_EVENT_DEAUTH			= 0x00000001,
+
+	/* event type 0x00000080 */
 
 	PS3_EURUS_EVENT_BEACON_LOST		= 0x00000001,
 	PS3_EURUS_EVENT_CONNECTED		= 0x00000002,
@@ -89,7 +92,9 @@ enum ps3_eurus_event_id {
 	PS3_EURUS_EVENT_WPA_CONNECTED		= 0x00000020,
 	PS3_EURUS_EVENT_WPA_ERROR		= 0x00000040,
 
-	PS3_EURUS_EVENT_DEAUTH			= 0x00000001,
+	/* event type 0x80000000 */
+
+	PS3_EURUS_EVENT_DEVICE_READY		= 0x00000001,
 };
 
 enum ps3_eurus_opmode {
@@ -206,6 +211,7 @@ struct ps3_eurus_cmd_common_config {
 	u8 opmode;	/* enum ps3_eurus_opmode */
 	u8 unknown3;
 	u8 bssid[6];
+	u8 res[2];
 	u8 ie[0];
 } __packed;
 
