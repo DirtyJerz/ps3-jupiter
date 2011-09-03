@@ -298,6 +298,7 @@ static void ps3_jupiter_irq_urb_complete(struct urb *urb)
 	case -ECONNRESET:
 	case -ENOENT:
 	case -ESHUTDOWN:
+	case -ENODEV:
 	return;
 	default:
 		dev_err(&udev->dev, "IRQ URB failed (%d)\n", urb->status);
@@ -328,6 +329,7 @@ static void ps3_jupiter_cmd_urb_complete(struct urb *urb)
 	case -ECONNRESET:
 	case -ENOENT:
 	case -ESHUTDOWN:
+	case -ENODEV:
 	default:
 		dev_err(&udev->dev, "command URB failed (%d)\n", urb->status);
 		jd->cmd_err = urb->status;
