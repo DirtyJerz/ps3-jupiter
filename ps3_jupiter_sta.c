@@ -1293,6 +1293,7 @@ static int ps3_jupiter_sta_tx_skb(struct ps3_jupiter_sta_dev *jstad, struct sk_b
 
 	urb = usb_alloc_urb(0, GFP_ATOMIC);
 	if (!urb) {
+		dev_err(&udev->dev, "could not allocate Tx URB\n");
 		err = -ENOMEM;
 		goto done;
 	}
@@ -1305,8 +1306,10 @@ static int ps3_jupiter_sta_tx_skb(struct ps3_jupiter_sta_dev *jstad, struct sk_b
 	usb_free_urb(urb);
 
 	err = usb_submit_urb(urb, GFP_ATOMIC);
-	if (err)
+	if (err) {
+		dev_err(&udev->dev, "could not submit Tx URB\n");
 		usb_unanchor_urb(urb);
+	}
 
 done:
 
@@ -1366,7 +1369,7 @@ static int ps3_jupiter_sta_start_scan(struct ps3_jupiter_sta_dev *jstad,
 	eurus_cmd_start_scan = (struct ps3_eurus_cmd_start_scan *) buf;
 	memset(eurus_cmd_start_scan, 0, 0x100);
 	eurus_cmd_start_scan->unknown2 = 0x1;
-	eurus_cmd_start_scan->unknown3 = cpu_to_le16(0x64);
+	eurus_cmd_start_scan->channel_dwell = cpu_to_le16(0x64);
 
 	chan_ie = eurus_cmd_start_scan->ie;
 	chan_ie[0] = WLAN_EID_DS_PARAMS;	/* ie id */

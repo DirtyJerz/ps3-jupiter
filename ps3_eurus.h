@@ -257,7 +257,7 @@ struct ps3_eurus_cmd_get_scan_results {
 struct ps3_eurus_cmd_start_scan {
 	u8 unknown1;
 	u8 unknown2;
-	__le16 unknown3;
+	__le16 channel_dwell;	/* in msec */
 	u8 res[6];
 	u8 ie[0];
 } __packed;
