@@ -208,10 +208,10 @@ struct ps3_eurus_cmd_associate {
 struct ps3_eurus_cmd_common_config {
 	u8 unknown1;
 	u8 unknown2;
-	u8 opmode;	/* enum ps3_eurus_opmode */
+	u8 opmode;		/* enum ps3_eurus_opmode */
 	u8 unknown3;
 	u8 bssid[6];
-	u8 res[2];
+	__le16 unknown4;
 	u8 ie[0];
 } __packed;
 
