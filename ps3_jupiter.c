@@ -932,8 +932,17 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 
 	eurus_cmd_set_antenna = (struct ps3_eurus_cmd_set_antenna *) buf;
 	memset(eurus_cmd_set_antenna, 0, sizeof(*eurus_cmd_set_antenna));
-	eurus_cmd_set_antenna->unknown1 = 0x2;
-	eurus_cmd_set_antenna->unknown2 = 0x2;
+
+	if (((jd->channel_info >> 40) & 0xff) == 0x1) {
+		eurus_cmd_set_antenna->unknown1 = 0x1;
+		eurus_cmd_set_antenna->unknown2 = 0x0;
+	} else if (((jd->channel_info >> 40) & 0xff) == 0x2) {
+		eurus_cmd_set_antenna->unknown1 = 0x1;
+		eurus_cmd_set_antenna->unknown2 = 0x1;
+	} else {
+		eurus_cmd_set_antenna->unknown1 = 0x2;
+		eurus_cmd_set_antenna->unknown2 = 0x2;
+	}
 
 	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_SET_ANTENNA,
 	    eurus_cmd_set_antenna, sizeof(*eurus_cmd_set_antenna), &status, NULL, NULL);
