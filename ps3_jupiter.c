@@ -190,9 +190,9 @@ static void ps3_jupiter_event_irq(struct ps3_jupiter_dev *jd,
 		    i * sizeof(struct ps3_eurus_event), sizeof(struct ps3_eurus_event));
 		list_event->event.hdr.type = le32_to_cpu(list_event->event.hdr.type);
 		list_event->event.hdr.id = le32_to_cpu(list_event->event.hdr.id);
-		list_event->event.hdr.unknown1 = le32_to_cpu(list_event->event.hdr.unknown1);
+		list_event->event.hdr.timestamp = le32_to_cpu(list_event->event.hdr.timestamp);
 		list_event->event.hdr.payload_length = le32_to_cpu(list_event->event.hdr.payload_length);
-		list_event->event.hdr.unknown2 = le32_to_cpu(list_event->event.hdr.unknown2);
+		list_event->event.hdr.unknown = le32_to_cpu(list_event->event.hdr.unknown);
 
 		spin_lock_irqsave(&jd->event_list_lock, flags);
 		list_add_tail(&list_event->list, &jd->event_list);
@@ -732,8 +732,8 @@ static void ps3_jupiter_event_handler(struct ps3_jupiter_event_listener *listene
 	struct usb_device *udev = jd->udev;
 
 	dev_dbg(&udev->dev, "got event (0x%08x 0x%08x 0x%08x 0x%08x 0x%08x)\n",
-	    event->hdr.type, event->hdr.id, event->hdr.unknown1, event->hdr.payload_length,
-	    event->hdr.unknown2);
+	    event->hdr.type, event->hdr.id, event->hdr.timestamp, event->hdr.payload_length,
+	    event->hdr.unknown);
 
 	if (event->hdr.type == PS3_EURUS_EVENT_TYPE_0x400) {
 		if ((event->hdr.id == 0x8) || (event->hdr.id == 0x10))
