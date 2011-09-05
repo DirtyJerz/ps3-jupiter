@@ -418,7 +418,7 @@ struct ps3_eurus_cmd_0x1133 {
 	u8 unknown3;
 	u8 unknown4;
 	__le32 unknown5;
-	u8 res[4];
+	u8 res[6];
 } __packed;
 
 struct ps3_eurus_cmd_0x114f {
