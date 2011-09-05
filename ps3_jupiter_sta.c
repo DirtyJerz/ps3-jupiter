@@ -2145,7 +2145,7 @@ static void ps3_jupiter_sta_event_handler(struct ps3_jupiter_event_listener *lis
 
 	dev_dbg(&udev->dev, "got event (0x%08x 0x%08x 0x%08x 0x%08x 0x%08x)\n",
 	    event->hdr.type, event->hdr.id, event->hdr.timestamp,
-	    event->hdr.payload_length, event->hdr.unknown2);
+	    event->hdr.payload_length, event->hdr.unknown);
 
 	switch (event->hdr.type) {
 	case PS3_EURUS_EVENT_TYPE_0x40:
