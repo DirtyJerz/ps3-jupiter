@@ -1735,6 +1735,17 @@ static int ps3_jupiter_sta_assoc(struct ps3_jupiter_sta_dev *jstad,
 	eurus_cmd_common_config = (struct ps3_eurus_cmd_common_config *) buf;
 	memset(eurus_cmd_common_config, 0, sizeof(*eurus_cmd_common_config));
 
+	eurus_cmd_common_config->bss_type = PS3_EURUS_BSS_INFRA;
+
+	switch (jstad->auth_mode) {
+	case PS3_JUPITER_STA_AUTH_OPEN:
+		eurus_cmd_common_config->auth_mode = PS3_EURUS_AUTH_OPEN;
+	break;
+	case PS3_JUPITER_STA_AUTH_SHARED_KEY:
+		eurus_cmd_common_config->auth_mode = PS3_EURUS_AUTH_SHARED_KEY;
+	break;
+	}
+
 	switch (jstad->opmode) {
 	case PS3_JUPITER_STA_OPMODE_11B:
 		eurus_cmd_common_config->opmode = PS3_EURUS_OPMODE_11B;
@@ -1748,6 +1759,8 @@ static int ps3_jupiter_sta_assoc(struct ps3_jupiter_sta_dev *jstad,
 	}
 
 	memcpy(eurus_cmd_common_config->bssid, scan_result->bssid, sizeof(scan_result->bssid));
+
+	eurus_cmd_common_config->capability = cpu_to_le16(scan_result->capability & ~WLAN_CAPABILITY_QOS);
 
 	payload_length = sizeof(*eurus_cmd_common_config);
 
@@ -2131,7 +2144,7 @@ static void ps3_jupiter_sta_event_handler(struct ps3_jupiter_event_listener *lis
 	struct usb_device *udev = jstad->udev;
 
 	dev_dbg(&udev->dev, "got event (0x%08x 0x%08x 0x%08x 0x%08x 0x%08x)\n",
-	    event->hdr.type, event->hdr.id, event->hdr.unknown1,
+	    event->hdr.type, event->hdr.id, event->hdr.timestamp,
 	    event->hdr.payload_length, event->hdr.unknown2);
 
 	switch (event->hdr.type) {
