@@ -1697,6 +1697,7 @@ static int ps3_jupiter_sta_assoc(struct ps3_jupiter_sta_dev *jstad,
 	struct ps3_jupiter_sta_scan_result *scan_result)
 {
 	struct ps3_eurus_cmd_0x1ed *eurus_cmd_0x1ed;
+	struct ps3_eurus_cmd_0x1025 *eurus_cmd_0x1025;
 	struct ps3_eurus_cmd_common_config *eurus_cmd_common_config;
 	struct ps3_eurus_cmd_wep_config *eurus_cmd_wep_config;
 	struct ps3_eurus_cmd_wpa_config *eurus_cmd_wpa_config;
@@ -1722,6 +1723,26 @@ static int ps3_jupiter_sta_assoc(struct ps3_jupiter_sta_dev *jstad,
 
 	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_0x1ed,
 	    eurus_cmd_0x1ed, sizeof(*eurus_cmd_0x1ed), &status, NULL, NULL);
+	if (err)
+		goto done;
+
+	if (status != PS3_EURUS_CMD_OK) {
+		err = -EIO;
+		goto done;
+	}
+
+	/* set preamble mode */
+
+	eurus_cmd_0x1025 = (struct ps3_eurus_cmd_0x1025 *) buf;
+	memset(eurus_cmd_0x1025, 0, sizeof(*eurus_cmd_0x1025));
+
+	if (scan_result->capability & WLAN_CAPABILITY_SHORT_PREAMBLE)
+		eurus_cmd_0x1025->preamble_mode = PS3_EURUS_PREAMBLE_SHORT;
+	else
+		eurus_cmd_0x1025->preamble_mode = PS3_EURUS_PREAMBLE_LONG;
+
+	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_0x1025,
+	    eurus_cmd_0x1025, sizeof(*eurus_cmd_0x1025), &status, NULL, NULL);
 	if (err)
 		goto done;
 

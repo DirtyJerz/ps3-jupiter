@@ -137,6 +137,11 @@ enum ps3_eurus_opmode {
 	PS3_EURUS_OPMODE_11G				= 0x02,
 };
 
+enum ps3_eurus_preamble_mode {
+	PS3_EURUS_PREAMBLE_SHORT			= 0x00,
+	PS3_EURUS_PREAMBLE_LONG				= 0x01,
+};
+
 enum ps3_eurus_wep_security_mode {
 	PS3_EURUS_WEP_SECURITY_NONE			= 0x00,
 	PS3_EURUS_WEP_SECURITY_40BIT			= 0x01,
@@ -318,7 +323,7 @@ struct ps3_eurus_cmd_wpa_config {
 } __packed;
 
 struct ps3_eurus_cmd_0x1025 {
-	u8 unknown;
+	u8 preamble_mode;	/* enum ps3_eurus_preamble_mode */
 	u8 res[3];
 } __packed;
 
