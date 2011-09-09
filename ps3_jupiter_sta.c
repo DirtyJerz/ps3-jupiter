@@ -971,6 +971,8 @@ static int ps3_jupiter_sta_open(struct net_device *netdev)
 	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
 	int err;
 
+	pr_debug("%s: called\n", __func__);
+
 	err = ps3_jupiter_sta_alloc_rx_urbs(jstad);
 	if (err)
 		return err;
@@ -982,6 +984,8 @@ static int ps3_jupiter_sta_open(struct net_device *netdev)
 
 	netif_start_queue(netdev);
 
+	pr_debug("%s: done\n", __func__);
+
 	return 0;
 }
 
@@ -991,6 +995,8 @@ static int ps3_jupiter_sta_open(struct net_device *netdev)
 static int ps3_jupiter_sta_stop(struct net_device *netdev)
 {
 	struct ps3_jupiter_sta_dev *jstad = netdev_priv(netdev);
+
+	pr_debug("%s: called\n", __func__);
 
 	cancel_delayed_work(&jstad->assoc_work);
 
@@ -1008,6 +1014,8 @@ static int ps3_jupiter_sta_stop(struct net_device *netdev)
 	ps3_jupiter_sta_reset_state(jstad);
 
 	netif_stop_queue(netdev);
+
+	pr_debug("%s: done\n", __func__);
 
 	return 0;
 }
@@ -2390,39 +2398,46 @@ static int ps3_jupiter_sta_prepare_rx_urb(struct ps3_jupiter_sta_dev *jstad,
  */
 static int ps3_jupiter_sta_alloc_rx_urbs(struct ps3_jupiter_sta_dev *jstad)
 {
+	struct usb_device *udev = jstad->udev;
 	struct urb *urb;
 	unsigned int i;
 	int err;
+
+	pr_debug("%s: called\n", __func__);
 
 	init_usb_anchor(&jstad->rx_urb_anchor);
 
 	for (i = 0; i < PS3_JUPITER_STA_RX_URBS; i++) {
 		urb = usb_alloc_urb(0, GFP_KERNEL);
 		if (!urb) {
+			dev_err(&udev->dev, "could not allocate Rx URB\n");
 			err = -ENOMEM;
 			goto done;
 		}
 
 		err = ps3_jupiter_sta_prepare_rx_urb(jstad, urb);
 		if (err) {
+			dev_err(&udev->dev, "could not prepare Rx URB (%d)\n", err);
 			usb_free_urb(urb);
 			goto done;
 		}
 
 		usb_anchor_urb(urb, &jstad->rx_urb_anchor);
+		usb_free_urb(urb);
 
 		err = usb_submit_urb(urb, GFP_KERNEL);
 		if (err) {
+			dev_err(&udev->dev, "could not submit Rx URB (%d)\n", err);
 			usb_unanchor_urb(urb);
 			dev_kfree_skb_any(urb->context);
 			usb_free_urb(urb);
 			goto done;
 		}
-
-		usb_free_urb(urb);
 	}
 
 	err = 0;
+
+	pr_debug("%s: done\n", __func__);
 
 done:
 
