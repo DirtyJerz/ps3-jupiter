@@ -391,10 +391,14 @@ struct ps3_eurus_cmd_0x1109 {
 	__le16 unknown3;
 	__le16 unknown4;
 	__le16 unknown5;
-	u8 res[2];
 	__le16 unknown6;
 	__le16 unknown7;
-	u8 unknown8[6];
+	u8 unknown8;
+	u8 res;
+	u8 unknown9;
+	u8 unknown10;
+	__le16 unknown11;
+	__le16 unknown12;
 } __packed;
 
 struct ps3_eurus_cmd_0x110b {
@@ -523,6 +527,37 @@ static inline u8 ps3_eurus_mcast_addr_hash(const u8 mac_addr[ETH_ALEN])
         h = ((h >> 24) & 0xf8) | (h & 0x7);
 
         return (h & 0xff);
+}
+
+/*
+ * ps3_eurus_make_cmd_0x1109
+ */
+static inline void ps3_eurus_make_cmd_0x1109(struct ps3_eurus_cmd_0x1109 *cmd_0x1109,
+	u8 arg1, u16 arg2, u16 arg3, u16 arg4, u16 arg5)
+{
+	memset(cmd_0x1109, 0, sizeof(*cmd_0x1109));
+
+	cmd_0x1109->unknown1 = cpu_to_le16(0x1);
+	cmd_0x1109->unknown8 = arg1;
+
+	if (arg1 == 0x0) {
+		cmd_0x1109->unknown6 = cpu_to_le16(0xa);
+	} else if (arg1 == 0x1) {
+		cmd_0x1109->unknown2 = cpu_to_le16(arg2);
+		cmd_0x1109->unknown3 = cpu_to_le16(arg3);
+		cmd_0x1109->unknown4 = cpu_to_le16(arg5);
+
+		if (arg2 == 0x0)
+			cmd_0x1109->unknown5 = cpu_to_le16(0x6);
+		else
+			cmd_0x1109->unknown5 = cpu_to_le16(0x2);
+
+		cmd_0x1109->unknown7 = cpu_to_le16(arg4);
+		cmd_0x1109->unknown9 = 0xff;
+		cmd_0x1109->unknown10 = 0xff;
+		cmd_0x1109->unknown11 = 0xffff;
+		cmd_0x1109->unknown12 = 0xffff;
+	}
 }
 
 #endif

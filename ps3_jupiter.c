@@ -963,15 +963,7 @@ static int ps3_jupiter_dev_init(struct ps3_jupiter_dev *jd)
 	/* state 12 */
 
 	eurus_cmd_0x1109 = (struct ps3_eurus_cmd_0x1109 *) buf;
-	memset(eurus_cmd_0x1109, 0, sizeof(*eurus_cmd_0x1109));
-	eurus_cmd_0x1109->unknown1 = cpu_to_le16(0x1);
-	eurus_cmd_0x1109->unknown2 = cpu_to_le16(0x0);
-	eurus_cmd_0x1109->unknown3 = cpu_to_le16(0x2715);
-	eurus_cmd_0x1109->unknown4 = cpu_to_le16(0x12);
-	eurus_cmd_0x1109->unknown5 = cpu_to_le16(0x6);
-	eurus_cmd_0x1109->unknown6 = cpu_to_le16(0x9);
-	eurus_cmd_0x1109->unknown7 = cpu_to_le16(0x1);
-	memset(eurus_cmd_0x1109->unknown8, 0xff, sizeof(eurus_cmd_0x1109->unknown8));
+	ps3_eurus_make_cmd_0x1109(eurus_cmd_0x1109, 0x1, 0x0, 0x2715, 0x9, 0x12);
 
 	err = _ps3_jupiter_exec_eurus_cmd(jd, PS3_EURUS_CMD_0x1109,
 	    eurus_cmd_0x1109, sizeof(*eurus_cmd_0x1109), &status, NULL, NULL);
