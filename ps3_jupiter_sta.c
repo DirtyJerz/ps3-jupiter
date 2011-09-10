@@ -1798,37 +1798,18 @@ static int ps3_jupiter_sta_assoc(struct ps3_jupiter_sta_dev *jstad,
 		ie += (2 + ie[1]);
 	}
 
-	if ((jstad->opmode == PS3_JUPITER_STA_OPMODE_11B) ||
-	    (jstad->opmode == PS3_JUPITER_STA_OPMODE_11BG)) {
-		ie[0] = WLAN_EID_SUPP_RATES;
-		ie[1] = 0x4;
-		ie[2] = (0x80 | 0x2);	/* 1Mbps */
-		ie[3] = (0x80 | 0x4);	/* 2Mbps */
-		ie[4] = (0x80 | 0xb);	/* 5.5MBps */
-		ie[5] = (0x80 | 0x16);	/* 11Mbps */
+	if (scan_result->supp_rates_ie) {
+		memcpy(ie, scan_result->supp_rates_ie, 2 + scan_result->supp_rates_ie[1]);
 
-		payload_length += (2 + ie[1]);
-		ie += (2 + ie[1]);
+		payload_length += (2 + scan_result->supp_rates_ie[1]);
+		ie += (2 + scan_result->supp_rates_ie[1]);
 	}
 
-	if ((jstad->opmode == PS3_JUPITER_STA_OPMODE_11G) ||
-	    (jstad->opmode == PS3_JUPITER_STA_OPMODE_11BG)) {
-		if (jstad->opmode == PS3_JUPITER_STA_OPMODE_11G)
-			ie[0] = WLAN_EID_SUPP_RATES;
-		else
-			ie[0] = WLAN_EID_EXT_SUPP_RATES;
-		ie[1] = 0x8;
-		ie[2] = 0xc;	/* 6Mbps */
-		ie[3] = 0x12;	/* 9Mbps */
-		ie[4] = 0x18;	/* 12Mbps */
-		ie[5] = 0x24;	/* 18Mbps */
-		ie[6] = 0x30;	/* 24Mbps */
-		ie[7] = 0x48;	/* 36Mbps */
-		ie[8] = 0x60;	/* 48Mbps */
-		ie[9] = 0x6c;	/* 54Mbps */
+	if (scan_result->ext_supp_rates_ie) {
+		memcpy(ie, scan_result->ext_supp_rates_ie, 2 + scan_result->ext_supp_rates_ie[1]);
 
-		payload_length += (2 + ie[1]);
-		ie += (2 + ie[1]);
+		payload_length += (2 + scan_result->ext_supp_rates_ie[1]);
+		ie += (2 + scan_result->ext_supp_rates_ie[1]);
 	}
 
 	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_SET_COMMON_CONFIG,
@@ -2545,8 +2526,10 @@ static int ps3_jupiter_sta_probe(struct usb_interface *interface,
 	tasklet_init(&jstad->rx_tasklet, ps3_jupiter_sta_rx_tasklet, (unsigned long) jstad);
 
 	err = ps3_jupiter_sta_alloc_rx_urbs(jstad);
-	if (err)
+	if (err) {
+		dev_err(&udev->dev, "could not allocate Rx URBs (%d)\n", err);
 		return err;
+	}
 
 	init_usb_anchor(&jstad->tx_urb_anchor);
 	atomic_set(&jstad->tx_submitted_urbs, 0);
