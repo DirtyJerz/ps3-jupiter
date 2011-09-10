@@ -1275,6 +1275,8 @@ static int ps3_jupiter_sta_tx_skb(struct ps3_jupiter_sta_dev *jstad, struct sk_b
 	unsigned long irq_flags;
 	int err;
 
+	pr_debug("%s: called\n", __func__);
+
 	spin_lock_irqsave(&jstad->lock, irq_flags);
 
 	if (atomic_read(&jstad->tx_submitted_urbs) >= PS3_JUPITER_STA_TX_URBS) {
@@ -1307,6 +1309,10 @@ static int ps3_jupiter_sta_tx_skb(struct ps3_jupiter_sta_dev *jstad, struct sk_b
 		dev_err(&udev->dev, "could not submit Tx URB (%d)\n", err);
 		usb_unanchor_urb(urb);
 	}
+
+	err = 0;
+
+	pr_debug("%s: done\n", __func__);
 
 done:
 
@@ -2180,6 +2186,7 @@ static int ps3_jupiter_sta_setup_netdev(struct ps3_jupiter_sta_dev *jstad)
 	struct net_device *netdev = jstad->netdev;
 	struct ps3_eurus_cmd_get_mac_addr_list *eurus_cmd_get_mac_addr_list;
 	struct ps3_eurus_cmd_set_mac_addr *eurus_cmd_set_mac_addr;
+	struct ps3_eurus_cmd_0x115b *eurus_cmd_0x115b;
 	unsigned char *buf = NULL;
 	unsigned int status, response_length;
 	int err;
@@ -2220,6 +2227,21 @@ static int ps3_jupiter_sta_setup_netdev(struct ps3_jupiter_sta_dev *jstad)
 
 	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_SET_MAC_ADDR,
 	    eurus_cmd_set_mac_addr, sizeof(*eurus_cmd_set_mac_addr), &status, NULL, NULL);
+	if (err)
+		goto done;
+
+	if (status != PS3_EURUS_CMD_OK) {
+		err = -EIO;
+		goto done;
+	}
+
+	eurus_cmd_0x115b = (struct ps3_eurus_cmd_0x115b *) buf;
+	memset(eurus_cmd_0x115b, 0, sizeof(*eurus_cmd_0x115b));
+	eurus_cmd_0x115b->unknown = cpu_to_le32(0x1);
+	memcpy(eurus_cmd_0x115b->mac_addr, netdev->dev_addr, ETH_ALEN);
+
+	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_0x115b,
+	    eurus_cmd_0x115b, sizeof(*eurus_cmd_0x115b), &status, NULL, NULL);
 	if (err)
 		goto done;
 
