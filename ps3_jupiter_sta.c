@@ -2237,7 +2237,8 @@ static int ps3_jupiter_sta_setup_netdev(struct ps3_jupiter_sta_dev *jstad)
 
 	eurus_cmd_0x115b = (struct ps3_eurus_cmd_0x115b *) buf;
 	memset(eurus_cmd_0x115b, 0, sizeof(*eurus_cmd_0x115b));
-	eurus_cmd_0x115b->unknown = cpu_to_le32(0x1);
+	eurus_cmd_0x115b->unknown1 = cpu_to_le16(0x1);
+	eurus_cmd_0x115b->unknown2 = cpu_to_le16(0x0);
 	memcpy(eurus_cmd_0x115b->mac_addr, netdev->dev_addr, ETH_ALEN);
 
 	err = ps3_jupiter_exec_eurus_cmd(PS3_EURUS_CMD_0x115b,

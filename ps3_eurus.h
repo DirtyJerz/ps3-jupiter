@@ -433,7 +433,8 @@ struct ps3_eurus_cmd_0x114f {
 } __packed;
 
 struct ps3_eurus_cmd_0x115b {
-	__le32 unknown;
+	__le16 unknown1;
+	__le16 unknown2;
 	u8 mac_addr[6];
 	u8 res[84];
 } __packed;
