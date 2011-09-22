@@ -1082,7 +1082,8 @@ static u32 ps3_jupiter_sta_get_rx_csum(struct net_device *netdev)
 
 	return 0;
 }
-
+#define IW_IOCTL_IDX(cmd)       ((cmd) - SIOCIWFIRST)
+#define IW_HANDLER(id, func)   [IW_IOCTL_IDX(id)] = func
 static const iw_handler ps3_jupiter_sta_iw_handler[] =
 {
 	IW_HANDLER(SIOCGIWNAME,		ps3_jupiter_sta_get_name),
