@@ -753,7 +753,7 @@ static void ps3_jupiter_event_handler(struct ps3_jupiter_event_listener *listene
 	    event->hdr.unknown);
 
 	if (event->hdr.type == PS3_EURUS_EVENT_TYPE_0x400) {
-		if ((event->hdr.id == 0x8) || (event->hdr.id == 0x10))
+		if ((event->hdr.id == 0x10)) //(event->hdr.id == 0x08) hangs on complete
 			complete(&jd->event_comp);
 	}
 	dev_dbg(&udev->dev, "exit handler\n");
